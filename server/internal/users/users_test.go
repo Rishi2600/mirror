@@ -58,3 +58,26 @@ func TestUnknownRoleIsRejected(t *testing.T) {
 		t.Error("Create accepted an unknown role")
 	}
 }
+
+func TestRoleIsPickedOnce(t *testing.T) {
+	ctx := context.Background()
+	tx := dbtest.Tx(t)
+
+	u, err := Create(ctx, tx, "new@example.com", "")
+	if err != nil {
+		t.Fatalf("Create without a role: %v", err)
+	}
+	if u, _ = ByID(ctx, tx, u.ID); u.Role != "" {
+		t.Errorf("Role = %q, want empty", u.Role)
+	}
+
+	if err := SetRole(ctx, tx, u.ID, RoleEmployer); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+	if u, _ = ByID(ctx, tx, u.ID); u.Role != RoleEmployer {
+		t.Errorf("Role = %q, want employer", u.Role)
+	}
+	if err := SetRole(ctx, tx, u.ID, RoleCandidate); !errors.Is(err, ErrRoleSet) {
+		t.Errorf("second SetRole error = %v, want ErrRoleSet", err)
+	}
+}
