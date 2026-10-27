@@ -1,0 +1,36 @@
+name: client
+
+# Path filters cannot use expressions, so they name the folders too.
+on:
+  push:
+    branches: [main]
+    paths: ["client/**", "server/api/openapi.yaml", ".github/workflows/client.yml"]
+  pull_request:
+    paths: ["client/**", "server/api/openapi.yaml", ".github/workflows/client.yml"]
+
+env:
+  APP_DIR: client
+  # The server's contract, relative to the checkout root.
+  SERVER_SPEC: server/api/openapi.yaml
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: ${{ env.APP_DIR }}/package.json
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run check
+
+      - name: Check the generated types match the server's contract
+        run: |
+          API_SPEC="$GITHUB_WORKSPACE/$SERVER_SPEC" bun run gen
+          git diff --exit-code -- src/api/schema.gen.ts
