@@ -5,9 +5,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	netmail "net/mail"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"mirror/server/internal/mail"
 )
 
 // Env names the environment the server runs in.
@@ -31,6 +34,10 @@ type Config struct {
 	WebDistDir string
 	// DatabaseURL is DATABASE_URL, the Postgres connection string. Required.
 	DatabaseURL string
+	// SMTP holds SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD and
+	// MAIL_FROM. An empty Host means emails go to the log (not allowed in
+	// production).
+	SMTP mail.SMTPConfig
 }
 
 // Defaults for unset variables.
@@ -38,6 +45,7 @@ const (
 	defaultEnv     = EnvDevelopment
 	defaultPort    = 8080
 	defaultDataDir = "data"
+	defaultSMTP    = 587
 )
 
 // Load reads the settings through getenv (os.Getenv in production) and
@@ -46,20 +54,16 @@ const (
 func Load(getenv func(string) string) (Config, error) {
 	var cfg Config
 	var errs []error
+	var err error
 
 	cfg.Env = Env(valueOr(getenv("APP_ENV"), string(defaultEnv)))
 	if cfg.Env != EnvDevelopment && cfg.Env != EnvProduction {
 		errs = append(errs, fmt.Errorf("APP_ENV must be %q or %q, got %q", EnvDevelopment, EnvProduction, cfg.Env))
 	}
 
-	cfg.Port = defaultPort
-	if v := getenv("API_PORT"); v != "" {
-		port, err := strconv.Atoi(v)
-		if err != nil || port < 1 || port > 65535 {
-			errs = append(errs, fmt.Errorf("API_PORT must be a port number from 1 to 65535, got %q", v))
-		} else {
-			cfg.Port = port
-		}
+	cfg.Port, err = parsePort("API_PORT", getenv("API_PORT"), defaultPort)
+	if err != nil {
+		errs = append(errs, err)
 	}
 
 	dataDir, err := prepareDataDir(valueOr(getenv("DATA_DIR"), defaultDataDir))
@@ -81,10 +85,57 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, errors.New("DATABASE_URL is required (see .env.example)"))
 	}
 
+	cfg.SMTP, err = loadSMTP(getenv, cfg.Env)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration:\n%w", errors.Join(errs...))
 	}
 	return cfg, nil
+}
+
+func parsePort(name, value string, fallback int) (int, error) {
+	if value == "" {
+		return fallback, nil
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return fallback, fmt.Errorf("%s must be a port number from 1 to 65535, got %q", name, value)
+	}
+	return port, nil
+}
+
+// loadSMTP reads the SMTP settings. They are all required once SMTP_HOST is
+// set, and SMTP_HOST is required in production.
+func loadSMTP(getenv func(string) string, env Env) (mail.SMTPConfig, error) {
+	cfg := mail.SMTPConfig{
+		Host:     getenv("SMTP_HOST"),
+		Username: getenv("SMTP_USERNAME"),
+		Password: getenv("SMTP_PASSWORD"),
+		From:     getenv("MAIL_FROM"),
+	}
+	if cfg.Host == "" {
+		if env == EnvProduction {
+			return cfg, errors.New("SMTP_HOST is required in production")
+		}
+		return cfg, nil
+	}
+
+	var errs []error
+	port, err := parsePort("SMTP_PORT", getenv("SMTP_PORT"), defaultSMTP)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.Port = port
+	if cfg.Username == "" || cfg.Password == "" {
+		errs = append(errs, errors.New("SMTP_USERNAME and SMTP_PASSWORD are required when SMTP_HOST is set"))
+	}
+	if _, err := netmail.ParseAddress(cfg.From); err != nil {
+		errs = append(errs, fmt.Errorf("MAIL_FROM must be an address like \"Mirror <you@example.com>\", got %q", cfg.From))
+	}
+	return cfg, errors.Join(errs...)
 }
 
 func valueOr(v, fallback string) string {

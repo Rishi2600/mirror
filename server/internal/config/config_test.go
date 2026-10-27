@@ -58,16 +58,23 @@ func TestLoadValidValues(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "nested", "data")
 
 	cfg, err := Load(envFrom(map[string]string{
-		"APP_ENV":      "production",
-		"API_PORT":     "9090",
-		"DATA_DIR":     dataDir,
-		"WEB_DIST_DIR": dist,
+		"APP_ENV":       "production",
+		"API_PORT":      "9090",
+		"DATA_DIR":      dataDir,
+		"WEB_DIST_DIR":  dist,
+		"SMTP_HOST":     "smtp.example.com",
+		"SMTP_USERNAME": "mailer",
+		"SMTP_PASSWORD": "secret",
+		"MAIL_FROM":     "Mirror <mirror@example.com>",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.Env != EnvProduction || cfg.Port != 9090 || cfg.DataDir != dataDir || cfg.WebDistDir != dist {
 		t.Errorf("unexpected config: %+v", cfg)
+	}
+	if cfg.SMTP.Host != "smtp.example.com" || cfg.SMTP.Port != 587 {
+		t.Errorf("SMTP = %+v, want host smtp.example.com and default port 587", cfg.SMTP)
 	}
 }
 
@@ -92,6 +99,10 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"web dist missing", map[string]string{"WEB_DIST_DIR": filepath.Join(noIndex, "missing")}, "WEB_DIST_DIR"},
 		{"web dist without index.html", map[string]string{"WEB_DIST_DIR": noIndex}, "WEB_DIST_DIR"},
 		{"database url missing", map[string]string{"DATABASE_URL": ""}, "DATABASE_URL"},
+		{"production without smtp", map[string]string{"APP_ENV": "production"}, "SMTP_HOST"},
+		{"smtp without login", map[string]string{"SMTP_HOST": "smtp.example.com", "MAIL_FROM": "a@example.com"}, "SMTP_USERNAME"},
+		{"smtp with bad from", map[string]string{"SMTP_HOST": "smtp.example.com", "SMTP_USERNAME": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "not an address"}, "MAIL_FROM"},
+		{"smtp with bad port", map[string]string{"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "x", "SMTP_USERNAME": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "a@example.com"}, "SMTP_PORT"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
