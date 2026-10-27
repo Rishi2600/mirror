@@ -35,7 +35,7 @@ var (
 // Create adds a user. The email is stored trimmed and lowercase. An empty
 // role means the user has not picked one yet.
 func Create(ctx context.Context, db *gorm.DB, email string, role Role) (User, error) {
-	u := User{Email: normalizeEmail(email), Role: role}
+	u := User{Email: NormalizeEmail(email), Role: role}
 	err := db.WithContext(ctx).Create(&u).Error
 	if errors.Is(err, gorm.ErrDuplicatedKey) {
 		return User{}, ErrEmailTaken
@@ -49,7 +49,7 @@ func Create(ctx context.Context, db *gorm.DB, email string, role Role) (User, er
 // ByEmail finds a user by email, ignoring case.
 func ByEmail(ctx context.Context, db *gorm.DB, email string) (User, error) {
 	var u User
-	err := db.WithContext(ctx).Where("email = ?", normalizeEmail(email)).First(&u).Error
+	err := db.WithContext(ctx).Where("email = ?", NormalizeEmail(email)).First(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return User{}, ErrNotFound
 	}
@@ -86,6 +86,7 @@ func SetRole(ctx context.Context, db *gorm.DB, id string, role Role) error {
 	return nil
 }
 
-func normalizeEmail(email string) string {
+// NormalizeEmail trims and lowercases an email, the form it is stored in.
+func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
