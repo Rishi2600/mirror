@@ -1,0 +1,22 @@
+name: mirror
+
+services:
+  pg:
+    image: pgvector/pgvector:pg18
+    container_name: mirror-pg
+    # Run as the host user, so the database files in DATA_DIR belong to you.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      POSTGRES_USER: mirror
+      POSTGRES_DB: mirror
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mirror}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # From Postgres 18 the image expects the mount at /var/lib/postgresql.
+      - ${DATA_DIR:-./data}/pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mirror", "-d", "mirror"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

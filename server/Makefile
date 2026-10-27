@@ -5,20 +5,22 @@ export
 VERSION ?= dev
 LDFLAGS := -X main.version=$(VERSION)
 BIN := bin/api
+DATA_DIR ?= ./data
+# compose.yaml runs Postgres as this user.
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
 
 .PHONY: db-up db-down dev test fmt-check vet build check
 
-## db-up: start the local databases (Docker Compose)
-db-up: compose.yaml
+## db-up: start the local database (Docker Compose)
+db-up:
+	@# Create the folder first, or Docker creates it owned by root.
+	mkdir -p $(DATA_DIR)/pg
 	docker compose up -d --wait
 
-## db-down: stop the local databases
-db-down: compose.yaml
+## db-down: stop the local database (the data stays in DATA_DIR)
+db-down:
 	docker compose down
-
-compose.yaml:
-	@echo "compose.yaml does not exist yet; the databases arrive in chunk 2" >&2
-	@exit 1
 
 ## dev: run the API from source
 dev:
