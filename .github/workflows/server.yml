@@ -10,6 +10,7 @@ on:
 
 env:
   APP_DIR: server
+  DATABASE_URL: postgres://mirror:mirror@localhost:5432/mirror?sslmode=disable
 
 jobs:
   check:
@@ -23,6 +24,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: ${{ env.APP_DIR }}/go.mod
-          cache-dependency-path: ${{ env.APP_DIR }}/go.mod
+          cache-dependency-path: ${{ env.APP_DIR }}/go.sum
+
+      - run: make db-up
 
       - run: make check
