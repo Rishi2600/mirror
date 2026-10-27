@@ -29,6 +29,8 @@ type Config struct {
 	// WebDistDir is WEB_DIST_DIR as an absolute path, or empty when unset.
 	// When set, it is a folder holding the built web app's index.html.
 	WebDistDir string
+	// DatabaseURL is DATABASE_URL, the Postgres connection string. Required.
+	DatabaseURL string
 }
 
 // Defaults for unset variables.
@@ -72,6 +74,11 @@ func Load(getenv func(string) string) (Config, error) {
 			errs = append(errs, err)
 		}
 		cfg.WebDistDir = webDist
+	}
+
+	cfg.DatabaseURL = getenv("DATABASE_URL")
+	if cfg.DatabaseURL == "" {
+		errs = append(errs, errors.New("DATABASE_URL is required (see .env.example)"))
 	}
 
 	if len(errs) > 0 {

@@ -7,8 +7,20 @@ import (
 	"testing"
 )
 
+const testDatabaseURL = "postgres://mirror:mirror@localhost:5432/mirror"
+
+// envFrom returns a getenv over vars, with DATABASE_URL set unless vars
+// sets it (to "" to test it missing).
 func envFrom(vars map[string]string) func(string) string {
-	return func(key string) string { return vars[key] }
+	return func(key string) string {
+		if v, ok := vars[key]; ok {
+			return v
+		}
+		if key == "DATABASE_URL" {
+			return testDatabaseURL
+		}
+		return ""
+	}
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -32,6 +44,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.WebDistDir != "" {
 		t.Errorf("WebDistDir = %q, want empty", cfg.WebDistDir)
+	}
+	if cfg.DatabaseURL != testDatabaseURL {
+		t.Errorf("DatabaseURL = %q, want %q", cfg.DatabaseURL, testDatabaseURL)
 	}
 }
 
@@ -76,6 +91,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"data dir not writable", map[string]string{"DATA_DIR": filepath.Join(readOnly, "data")}, "DATA_DIR"},
 		{"web dist missing", map[string]string{"WEB_DIST_DIR": filepath.Join(noIndex, "missing")}, "WEB_DIST_DIR"},
 		{"web dist without index.html", map[string]string{"WEB_DIST_DIR": noIndex}, "WEB_DIST_DIR"},
+		{"database url missing", map[string]string{"DATABASE_URL": ""}, "DATABASE_URL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"mirror/server/internal/config"
+	"mirror/server/internal/db"
 	"mirror/server/internal/httpserver"
 )
 
@@ -37,6 +38,17 @@ func run() error {
 	}
 	logger := newLogger(cfg.Env)
 	slog.SetDefault(logger)
+
+	conn, err := db.Open(cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connecting to the database (is Postgres running? try make db-up): %w", err)
+	}
+	defer db.Close(conn)
+	applied, err := db.Migrate(context.Background(), conn)
+	if err != nil {
+		return err
+	}
+	logger.Info("database ready", "migrations_applied", applied)
 
 	srv := &http.Server{
 		Addr: net.JoinHostPort("", strconv.Itoa(cfg.Port)),
