@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -12,7 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"mirror/server/internal/dbtest"
+	"mirror/server/internal/storage"
 )
 
 // fakeMailer records the last email instead of sending it.
@@ -23,25 +27,72 @@ func (m *fakeMailer) Send(ctx context.Context, to, subject, body string) error {
 	return nil
 }
 
+// fakeQueue records queued CV parse jobs instead of running them.
+type fakeQueue struct{ fileIDs []string }
+
+func (q *fakeQueue) ParseCV(ctx context.Context, userID, fileID string) error {
+	q.fileIDs = append(q.fileIDs, fileID)
+	return nil
+}
+
 // authClient is a test HTTP client with a cookie jar, like a browser.
 type authClient struct {
 	t      *testing.T
 	base   string
 	http   *http.Client
 	mailer *fakeMailer
+	queue  *fakeQueue
+	tx     *gorm.DB
+	files  *storage.Local
 }
 
 func newAuthClient(t *testing.T) *authClient {
 	t.Helper()
 	mailer := &fakeMailer{}
+	queue := &fakeQueue{}
+	tx := dbtest.Tx(t)
+	files, err := storage.NewLocal(t.TempDir(), bytes.Repeat([]byte{1}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(New(Options{
-		Logger: slog.New(slog.DiscardHandler),
-		DB:     dbtest.Tx(t),
-		Mailer: mailer,
+		Logger:  slog.New(slog.DiscardHandler),
+		DB:      tx,
+		Mailer:  mailer,
+		Files:   files,
+		CVQueue: queue,
 	}))
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
-	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: jar}, mailer: mailer}
+	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: jar}, mailer: mailer, queue: queue, tx: tx, files: files}
+}
+
+// upload posts data as a multipart form file in field, like a browser form.
+func (c *authClient) upload(path, field string, data []byte, out any) *http.Response {
+	c.t.Helper()
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	part, _ := form.CreateFormFile(field, "cv.pdf")
+	part.Write(data)
+	form.Close()
+	res, err := c.http.Post(c.base+path, form.FormDataContentType(), &buf)
+	if err != nil {
+		c.t.Fatalf("POST %s: %v", path, err)
+	}
+	defer res.Body.Close()
+	if out != nil {
+		json.NewDecoder(res.Body).Decode(out)
+	}
+	return res
+}
+
+// signInAs signs in a new user and picks role.
+func (c *authClient) signInAs(email, role string) {
+	c.t.Helper()
+	c.signIn(email)
+	if res := c.do("POST", "/v1/me/role", map[string]string{"role": role}, nil); res.StatusCode != http.StatusOK {
+		c.t.Fatalf("picking %s: status %d", role, res.StatusCode)
+	}
 }
 
 // do sends a request with an optional JSON body and decodes a JSON reply into out.

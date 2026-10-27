@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"mirror/server/internal/mail"
+	"mirror/server/internal/storage"
 )
 
 // Options configure the handler.
@@ -23,6 +24,8 @@ type Options struct {
 	Mailer mail.Mailer
 	// SecureCookies marks cookies HTTPS-only; true outside development.
 	SecureCookies bool
+	Files         *storage.Local
+	CVQueue       CVQueue
 }
 
 type server struct {
@@ -32,6 +35,8 @@ type server struct {
 	db            *gorm.DB
 	mailer        mail.Mailer
 	secureCookies bool
+	files         *storage.Local
+	cvQueue       CVQueue
 }
 
 // New returns the server's root handler.
@@ -43,6 +48,8 @@ func New(opts Options) http.Handler {
 		db:            opts.DB,
 		mailer:        opts.Mailer,
 		secureCookies: opts.SecureCookies,
+		files:         opts.Files,
+		cvQueue:       opts.CVQueue,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -55,6 +62,9 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	mux.HandleFunc("GET /v1/me", s.me)
 	mux.HandleFunc("POST /v1/me/role", s.setRole)
+	mux.HandleFunc("POST /v1/profile/cv", s.uploadCV)
+	mux.HandleFunc("GET /v1/profile", s.getProfile)
+	mux.HandleFunc("PUT /v1/profile", s.updateProfile)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

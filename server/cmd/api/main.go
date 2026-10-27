@@ -10,14 +10,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
+	"mirror/server/internal/ai"
 	"mirror/server/internal/config"
 	"mirror/server/internal/db"
 	"mirror/server/internal/httpserver"
+	"mirror/server/internal/jobs"
 	"mirror/server/internal/mail"
+	"mirror/server/internal/storage"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -56,6 +60,16 @@ func run() error {
 		return err
 	}
 
+	files, err := storage.NewLocal(filepath.Join(cfg.DataDir, "files"), cfg.FileKey)
+	if err != nil {
+		return err
+	}
+	parser := ai.NewGroq(cfg.GroqAPIKey, cfg.GroqModel, conn, logger)
+	queue, err := jobs.Start(context.Background(), cfg.DatabaseURL, conn, files, parser, logger)
+	if err != nil {
+		return fmt.Errorf("starting background jobs: %w", err)
+	}
+
 	srv := &http.Server{
 		Addr: net.JoinHostPort("", strconv.Itoa(cfg.Port)),
 		Handler: httpserver.New(httpserver.Options{
@@ -65,6 +79,8 @@ func run() error {
 			DB:            conn,
 			Mailer:        mailer,
 			SecureCookies: cfg.Env != config.EnvDevelopment,
+			Files:         files,
+			CVQueue:       queue,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -99,6 +115,9 @@ func run() error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
+	}
+	if err := queue.Stop(shutdownCtx); err != nil {
+		return fmt.Errorf("stopping background jobs: %w", err)
 	}
 	if err := <-errc; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
