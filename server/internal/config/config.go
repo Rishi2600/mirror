@@ -3,6 +3,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	netmail "net/mail"
@@ -38,6 +39,12 @@ type Config struct {
 	// MAIL_FROM. An empty Host means emails go to the log (not allowed in
 	// production).
 	SMTP mail.SMTPConfig
+	// GroqAPIKey is GROQ_API_KEY, for CV parsing. Required.
+	GroqAPIKey string
+	// GroqModel is GROQ_MODEL; it must support strict JSON-schema output.
+	GroqModel string
+	// FileKey is FILE_ENCRYPTION_KEY decoded: 32 bytes that encrypt uploads.
+	FileKey []byte
 }
 
 // Defaults for unset variables.
@@ -46,6 +53,7 @@ const (
 	defaultPort    = 8080
 	defaultDataDir = "data"
 	defaultSMTP    = 587
+	defaultModel   = "openai/gpt-oss-120b"
 )
 
 // Load reads the settings through getenv (os.Getenv in production) and
@@ -88,6 +96,17 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.SMTP, err = loadSMTP(getenv, cfg.Env)
 	if err != nil {
 		errs = append(errs, err)
+	}
+
+	cfg.GroqAPIKey = getenv("GROQ_API_KEY")
+	if cfg.GroqAPIKey == "" {
+		errs = append(errs, errors.New("GROQ_API_KEY is required (get one at console.groq.com)"))
+	}
+	cfg.GroqModel = valueOr(getenv("GROQ_MODEL"), defaultModel)
+
+	cfg.FileKey, err = base64.StdEncoding.DecodeString(getenv("FILE_ENCRYPTION_KEY"))
+	if err != nil || len(cfg.FileKey) != 32 {
+		errs = append(errs, errors.New("FILE_ENCRYPTION_KEY must be 32 bytes in base64; make one with: openssl rand -base64 32"))
 	}
 
 	if len(errs) > 0 {

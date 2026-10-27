@@ -9,17 +9,21 @@ import (
 
 const testDatabaseURL = "postgres://mirror:mirror@localhost:5432/mirror"
 
-// envFrom returns a getenv over vars, with DATABASE_URL set unless vars
-// sets it (to "" to test it missing).
+// requiredDefaults are valid values for the required settings.
+var requiredDefaults = map[string]string{
+	"DATABASE_URL":        testDatabaseURL,
+	"GROQ_API_KEY":        "gsk_test",
+	"FILE_ENCRYPTION_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+}
+
+// envFrom returns a getenv over vars, falling back to requiredDefaults. Set
+// a key to "" in vars to test it missing.
 func envFrom(vars map[string]string) func(string) string {
 	return func(key string) string {
 		if v, ok := vars[key]; ok {
 			return v
 		}
-		if key == "DATABASE_URL" {
-			return testDatabaseURL
-		}
-		return ""
+		return requiredDefaults[key]
 	}
 }
 
@@ -47,6 +51,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.DatabaseURL != testDatabaseURL {
 		t.Errorf("DatabaseURL = %q, want %q", cfg.DatabaseURL, testDatabaseURL)
+	}
+	if cfg.GroqModel != "openai/gpt-oss-120b" || len(cfg.FileKey) != 32 {
+		t.Errorf("GroqModel = %q, FileKey = %d bytes; want the default model and 32 bytes", cfg.GroqModel, len(cfg.FileKey))
 	}
 }
 
@@ -100,6 +107,10 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		{"web dist without index.html", map[string]string{"WEB_DIST_DIR": noIndex}, "WEB_DIST_DIR"},
 		{"database url missing", map[string]string{"DATABASE_URL": ""}, "DATABASE_URL"},
 		{"production without smtp", map[string]string{"APP_ENV": "production"}, "SMTP_HOST"},
+		{"groq key missing", map[string]string{"GROQ_API_KEY": ""}, "GROQ_API_KEY"},
+		{"file key missing", map[string]string{"FILE_ENCRYPTION_KEY": ""}, "FILE_ENCRYPTION_KEY"},
+		{"file key not base64", map[string]string{"FILE_ENCRYPTION_KEY": "not base64!"}, "FILE_ENCRYPTION_KEY"},
+		{"file key too short", map[string]string{"FILE_ENCRYPTION_KEY": "c2hvcnQ="}, "FILE_ENCRYPTION_KEY"},
 		{"smtp without login", map[string]string{"SMTP_HOST": "smtp.example.com", "MAIL_FROM": "a@example.com"}, "SMTP_USERNAME"},
 		{"smtp with bad from", map[string]string{"SMTP_HOST": "smtp.example.com", "SMTP_USERNAME": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "not an address"}, "MAIL_FROM"},
 		{"smtp with bad port", map[string]string{"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "x", "SMTP_USERNAME": "u", "SMTP_PASSWORD": "p", "MAIL_FROM": "a@example.com"}, "SMTP_PORT"},
