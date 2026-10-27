@@ -5,15 +5,12 @@ import { defineConfig, loadEnv } from 'vite'
 
 const defaultProxyTarget = 'http://localhost:8080'
 
-// The client finds the server by URL, never by path. In development, /v1
-// (including WebSocket upgrades) is proxied to API_PROXY_TARGET, so the
-// browser sees one origin. The Host header is passed through unchanged
-// (changeOrigin: false) so the server can resolve the tenant from it.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, '')
   const proxy = {
     '/v1': {
       target: env.API_PROXY_TARGET || defaultProxyTarget,
+      // Keep the Host header: the server picks the tenant from it.
       changeOrigin: false,
       ws: true,
     },

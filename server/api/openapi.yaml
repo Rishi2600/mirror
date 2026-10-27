@@ -2,10 +2,7 @@ openapi: 3.0.3
 info:
   title: Mirror API
   version: 0.1.0
-  description: >-
-    The Mirror API. This file is the single source of truth for the API
-    contract; the server generates its handlers from it and clients generate
-    their types from it.
+  description: The Mirror API contract. Server code and client types are generated from it.
 servers:
   - url: /
 paths:

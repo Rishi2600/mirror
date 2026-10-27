@@ -1,13 +1,10 @@
-// The typed API client. This folder must not depend on the DOM or on Vite,
-// so a React Native app can copy the pattern.
+// No DOM or Vite APIs in this folder, so React Native can reuse it.
 import createClient from 'openapi-fetch'
 import type { paths } from './schema.gen'
 
 export type ApiClient = ReturnType<typeof createApiClient>
 
-// createApiClient returns a client for the API at baseUrl. An empty baseUrl
-// means the same origin the app is served from. Credentials are always sent,
-// so the session cookie reaches the API.
+// An empty baseUrl means same origin. Credentials carry the session cookie.
 export function createApiClient(baseUrl: string) {
   return createClient<paths>({ baseUrl, credentials: 'include' })
 }
