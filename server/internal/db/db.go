@@ -57,7 +57,8 @@ func Migrate(ctx context.Context, db *gorm.DB) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	locker, err := lock.NewPostgresSessionLocker()
+	// Retry every second, for up to 5 minutes (the default retries every 5s).
+	locker, err := lock.NewPostgresSessionLocker(lock.WithLockTimeout(1, 300))
 	if err != nil {
 		return 0, err
 	}
