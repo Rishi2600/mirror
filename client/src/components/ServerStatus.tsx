@@ -1,6 +1,4 @@
-import type { components } from '../api/schema.gen'
-
-type Health = components['schemas']['Health']
+import type { Health } from '../api/types'
 
 type Props = {
   health?: Health
