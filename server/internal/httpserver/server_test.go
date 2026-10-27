@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"mirror/server/api"
 )
 
 const indexHTML = "<!doctype html><title>Mirror</title>"
@@ -55,7 +52,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	return rec
 }
 
-func TestHealthMatchesContract(t *testing.T) {
+func TestHealth(t *testing.T) {
 	rec := get(t, newTestServer(t, ""), "/v1/healthz")
 
 	if rec.Code != http.StatusOK {
@@ -65,54 +62,13 @@ func TestHealthMatchesContract(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 
-	// The contract's required fields must all be present, with no extras.
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(rec.Body.Bytes(), &fields); err != nil {
-		t.Fatalf("body is not a JSON object: %v", err)
+	var got Health
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("body is not valid JSON: %v", err)
 	}
-	for _, key := range []string{"status", "version", "time"} {
-		if _, ok := fields[key]; !ok {
-			t.Errorf("body is missing %q", key)
-		}
-	}
-	if len(fields) != 3 {
-		t.Errorf("body has %d fields, want 3: %s", len(fields), rec.Body)
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(rec.Body.Bytes()))
-	dec.DisallowUnknownFields()
-	var health api.Health
-	if err := dec.Decode(&health); err != nil {
-		t.Fatalf("body does not decode into the contract's Health: %v", err)
-	}
-	if !health.Status.Valid() || health.Status != api.Ok {
-		t.Errorf("status = %q, want ok", health.Status)
-	}
-	if health.Version != "test-version" {
-		t.Errorf("version = %q, want test-version", health.Version)
-	}
-
-	var raw struct{ Time string }
-	json.Unmarshal(rec.Body.Bytes(), &raw)
-	if _, err := time.Parse(time.RFC3339, raw.Time); err != nil {
-		t.Errorf("time %q is not RFC 3339: %v", raw.Time, err)
-	}
-}
-
-func TestContractIsServed(t *testing.T) {
-	rec := get(t, newTestServer(t, ""), "/v1/openapi.yaml")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/yaml" {
-		t.Errorf("Content-Type = %q, want application/yaml", ct)
-	}
-	if !bytes.Equal(rec.Body.Bytes(), api.Spec) {
-		t.Error("served contract differs from the embedded openapi.yaml")
-	}
-	if !strings.HasPrefix(rec.Body.String(), "openapi: 3.0.3") {
-		t.Error("served contract does not start with the OpenAPI version")
+	want := Health{Status: "ok", Version: "test-version", Time: "2026-10-27T12:00:00Z"}
+	if got != want {
+		t.Errorf("body = %+v, want %+v", got, want)
 	}
 }
 

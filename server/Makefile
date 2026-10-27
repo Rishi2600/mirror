@@ -6,7 +6,7 @@ VERSION ?= dev
 LDFLAGS := -X main.version=$(VERSION)
 BIN := bin/api
 
-.PHONY: db-up db-down dev test gen gen-check fmt-check vet build check
+.PHONY: db-up db-down dev test fmt-check vet build check
 
 ## db-up: start the local databases (Docker Compose)
 db-up: compose.yaml
@@ -28,18 +28,6 @@ dev:
 test:
 	go test ./...
 
-## gen: regenerate code from api/openapi.yaml
-gen:
-	go generate ./...
-
-## gen-check: fail if the generated code does not match the contract
-gen-check:
-	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
-	go tool oapi-codegen -config api/oapi-codegen.yaml -o "$$tmp" api/openapi.yaml && \
-	if ! cmp -s "$$tmp" api/api.gen.go; then \
-		echo "api/api.gen.go does not match api/openapi.yaml; run make gen" >&2; exit 1; \
-	fi
-
 ## fmt-check: fail if any Go file is not gofmt-formatted
 fmt-check:
 	@unformatted=$$(gofmt -l .); \
@@ -55,4 +43,4 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/api
 
 ## check: everything CI runs
-check: fmt-check gen-check vet test build
+check: fmt-check vet test build

@@ -1,5 +1,0 @@
-package: api
-generate:
-  models: true
-  std-http-server: true
-  strict-server: true
