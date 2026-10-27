@@ -5,6 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"gorm.io/gorm"
+
+	"mirror/server/internal/mail"
 )
 
 // Options configure the handler.
@@ -14,23 +18,43 @@ type Options struct {
 	// WebDistDir, when set, is the folder of the built web app to serve.
 	WebDistDir string
 	// Now returns the current time; it defaults to time.Now.
-	Now func() time.Time
+	Now    func() time.Time
+	DB     *gorm.DB
+	Mailer mail.Mailer
+	// SecureCookies marks cookies HTTPS-only; true outside development.
+	SecureCookies bool
 }
 
 type server struct {
-	version string
-	now     func() time.Time
+	version       string
+	now           func() time.Time
+	logger        *slog.Logger
+	db            *gorm.DB
+	mailer        mail.Mailer
+	secureCookies bool
 }
 
 // New returns the server's root handler.
 func New(opts Options) http.Handler {
-	s := &server{version: opts.Version, now: opts.Now}
+	s := &server{
+		version:       opts.Version,
+		now:           opts.Now,
+		logger:        opts.Logger,
+		db:            opts.DB,
+		mailer:        opts.Mailer,
+		secureCookies: opts.SecureCookies,
+	}
 	if s.now == nil {
 		s.now = time.Now
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/healthz", s.health)
+	mux.HandleFunc("POST /v1/auth/otp/request", s.requestCode)
+	mux.HandleFunc("POST /v1/auth/otp/verify", s.verifyCode)
+	mux.HandleFunc("POST /v1/auth/logout", s.logout)
+	mux.HandleFunc("GET /v1/me", s.me)
+	mux.HandleFunc("POST /v1/me/role", s.setRole)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

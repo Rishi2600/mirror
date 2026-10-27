@@ -17,6 +17,7 @@ import (
 	"mirror/server/internal/config"
 	"mirror/server/internal/db"
 	"mirror/server/internal/httpserver"
+	"mirror/server/internal/mail"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -50,12 +51,20 @@ func run() error {
 	}
 	logger.Info("database ready", "migrations_applied", applied)
 
+	mailer, err := newMailer(cfg.SMTP, logger)
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr: net.JoinHostPort("", strconv.Itoa(cfg.Port)),
 		Handler: httpserver.New(httpserver.Options{
-			Logger:     logger,
-			Version:    version,
-			WebDistDir: cfg.WebDistDir,
+			Logger:        logger,
+			Version:       version,
+			WebDistDir:    cfg.WebDistDir,
+			DB:            conn,
+			Mailer:        mailer,
+			SecureCookies: cfg.Env != config.EnvDevelopment,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -96,6 +105,16 @@ func run() error {
 	}
 	logger.Info("stopped")
 	return nil
+}
+
+// newMailer sends by SMTP when SMTP_HOST is set, and to the log otherwise.
+func newMailer(cfg mail.SMTPConfig, logger *slog.Logger) (mail.Mailer, error) {
+	if cfg.Host == "" {
+		logger.Warn("SMTP_HOST is empty: sign-in codes go to this log, not by email")
+		return mail.Log{Logger: logger}, nil
+	}
+	logger.Info("sending email by SMTP", "host", cfg.Host, "port", cfg.Port)
+	return mail.NewSMTP(cfg)
 }
 
 // newLogger logs readable text in development and JSON elsewhere.
