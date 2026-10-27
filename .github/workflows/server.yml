@@ -23,6 +23,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: ${{ env.APP_DIR }}/go.mod
-          cache-dependency-path: ${{ env.APP_DIR }}/go.sum
+          cache-dependency-path: ${{ env.APP_DIR }}/go.mod
 
       - run: make check
