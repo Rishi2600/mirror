@@ -10,18 +10,14 @@ export default defineConfig(({ mode }) => {
   const proxy = {
     '/v1': {
       target: env.API_PROXY_TARGET || defaultProxyTarget,
-      // Keep the Host header: the server picks the tenant from it.
-      changeOrigin: false,
       ws: true,
     },
   }
-  // Tenant subdomains such as acme.localhost resolve to this machine.
-  const allowedHosts = ['.localhost']
 
   return {
     plugins: [react(), tailwindcss()],
-    server: { port: 5173, strictPort: true, allowedHosts, proxy },
-    preview: { allowedHosts, proxy },
+    server: { port: 5173, strictPort: true, proxy },
+    preview: { proxy },
     test: { environment: 'happy-dom' },
   }
 })
