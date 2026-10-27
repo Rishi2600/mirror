@@ -1,5 +1,5 @@
 // No DOM or Vite APIs in this folder, so React Native can reuse it.
-import type { Health, User } from './types'
+import type { CV, Health, Preferences, Profile, User } from './types'
 
 export type ApiClient = ReturnType<typeof createApiClient>
 
@@ -15,12 +15,14 @@ export class ApiError extends Error {
 
 // An empty baseUrl means same origin. Credentials carry the session cookie.
 export function createApiClient(baseUrl: string) {
+  // body is sent as JSON, or as a multipart form when it is FormData.
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const isForm = body instanceof FormData
     const res = await fetch(baseUrl + path, {
       method,
       credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || isForm ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     })
     if (!res.ok) {
       const data = await res.json().catch(() => null)
@@ -49,5 +51,23 @@ export function createApiClient(baseUrl: string) {
       request<User>('POST', '/v1/auth/otp/verify', { email, code }),
     setRole: (role: 'candidate' | 'employer') => request<User>('POST', '/v1/me/role', { role }),
     logout: () => request<void>('POST', '/v1/auth/logout'),
+
+    // Resolves to null when the candidate has not uploaded a CV yet.
+    getProfile: () =>
+      request<Profile>('GET', '/v1/profile').catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          return null
+        }
+        throw err
+      }),
+
+    uploadCV: (file: Blob) => {
+      const form = new FormData()
+      form.append('cv', file)
+      return request<Profile>('POST', '/v1/profile/cv', form)
+    },
+
+    updateProfile: (cv: CV, preferences: Preferences) =>
+      request<Profile>('PUT', '/v1/profile', { cv, preferences }),
   }
 }

@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { ServerStatus } from '../components/ServerStatus'
 import { api } from '../lib/api'
 import { meQueryKey, useMe } from '../lib/useMe'
@@ -34,6 +35,11 @@ export function HomePage() {
             Log out
           </button>
         </section>
+      )}
+      {user?.role === 'candidate' && (
+        <Link to="/profile" className="rounded bg-gray-900 px-3 py-2 text-center font-medium text-white">
+          Your profile
+        </Link>
       )}
       <ServerStatus health={health.data} isLoading={health.isPending} isError={health.isError} />
     </main>
