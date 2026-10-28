@@ -22,21 +22,38 @@ type CVQueue interface {
 // ProfileResponse is the candidate profile as the API returns it.
 type ProfileResponse struct {
 	// ParseStatus is pending (reading the CV), done or failed.
-	ParseStatus string               `json:"parse_status"`
-	ParseError  string               `json:"parse_error"`
-	CV          profiles.CV          `json:"cv"`
-	Preferences profiles.Preferences `json:"preferences"`
-	UpdatedAt   time.Time            `json:"updated_at"`
+	ParseStatus  string                `json:"parse_status"`
+	ParseError   string                `json:"parse_error"`
+	CV           profiles.CV           `json:"cv"`
+	Preferences  profiles.Preferences  `json:"preferences"`
+	CardSettings profiles.CardSettings `json:"card_settings"`
+	// PhotoURL is "" until a photo is uploaded.
+	PhotoURL string `json:"photo_url"`
+	// Onboarded is true once the card is finished (and live).
+	Onboarded bool      `json:"onboarded"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func toProfileResponse(p profiles.Profile) ProfileResponse {
 	return ProfileResponse{
-		ParseStatus: p.ParseStatus,
-		ParseError:  p.ParseError,
-		CV:          p.CV,
-		Preferences: p.Preferences(),
-		UpdatedAt:   p.UpdatedAt,
+		ParseStatus:  p.ParseStatus,
+		ParseError:   p.ParseError,
+		CV:           p.CV,
+		Preferences:  p.Preferences(),
+		CardSettings: p.CardSettings(),
+		PhotoURL:     ownPhotoURL(p),
+		Onboarded:    p.OnboardedAt != nil,
+		UpdatedAt:    p.UpdatedAt,
 	}
+}
+
+// ownPhotoURL is where candidates load their own photo. The file ID in the
+// query makes the browser fetch a new photo after an upload.
+func ownPhotoURL(p profiles.Profile) string {
+	if p.PhotoFileID == nil {
+		return ""
+	}
+	return "/v1/profile/photo?v=" + *p.PhotoFileID
 }
 
 // POST /v1/profile/cv: multipart form with the file in field "cv".
@@ -97,15 +114,17 @@ func (s *server) getProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toProfileResponse(p))
 }
 
-// PUT /v1/profile {cv, preferences}: replaces both with the candidate's edits.
+// PUT /v1/profile {cv, preferences, card_settings}: replaces all three with
+// the candidate's edits.
 func (s *server) updateProfile(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireCandidate(w, r)
 	if !ok {
 		return
 	}
 	var body struct {
-		CV          profiles.CV          `json:"cv"`
-		Preferences profiles.Preferences `json:"preferences"`
+		CV           profiles.CV           `json:"cv"`
+		Preferences  profiles.Preferences  `json:"preferences"`
+		CardSettings profiles.CardSettings `json:"card_settings"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -114,8 +133,12 @@ func (s *server) updateProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := profiles.ValidateCardSettings(body.CardSettings); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
-	p, err := profiles.Update(r.Context(), s.db, user.ID, body.CV, body.Preferences)
+	p, err := profiles.Update(r.Context(), s.db, user.ID, body.CV, body.Preferences, body.CardSettings)
 	switch {
 	case errors.Is(err, profiles.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())

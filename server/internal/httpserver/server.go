@@ -65,6 +65,10 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/profile/cv", s.uploadCV)
 	mux.HandleFunc("GET /v1/profile", s.getProfile)
 	mux.HandleFunc("PUT /v1/profile", s.updateProfile)
+	mux.HandleFunc("POST /v1/profile/photo", s.uploadPhoto)
+	mux.HandleFunc("GET /v1/profile/photo", s.getPhoto)
+	mux.HandleFunc("GET /v1/card", s.getCard)
+	mux.HandleFunc("POST /v1/card/finish", s.finishCard)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {
