@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import type { HiringCard } from '../../api/types'
 import { ErrorMessage } from '../../components/form'
 import { JobCard } from '../../components/JobCard'
@@ -57,9 +58,14 @@ export function HiringPreviewStep({ card, onBack }: Props) {
 
       {card.status === 'live' ? (
         <div className="flex items-center justify-between gap-3">
-          <p data-testid="card-live" className="text-green-800">
-            Live: fitting candidates see this card.
-          </p>
+          <div className="flex flex-col gap-1">
+            <p data-testid="card-live" className="text-green-800">
+              Live: fitting candidates see this card.
+            </p>
+            <Link to={`/hiring/${card.id}/timeline`} className="text-sm text-blue-700 underline">
+              See fitting candidates
+            </Link>
+          </div>
           <button type="button" disabled={busy} onClick={() => setStatus('closed')} className="rounded border border-gray-300 px-4 py-2">
             Close card
           </button>

@@ -38,9 +38,14 @@ export function HomePage() {
         </section>
       )}
       {user?.role === 'candidate' && (
-        <Link to="/profile" className="rounded bg-gray-900 px-3 py-2 text-center font-medium text-white">
-          Your card
-        </Link>
+        <div className="flex flex-col gap-2">
+          <Link to="/timeline" className="rounded bg-gray-900 px-3 py-2 text-center font-medium text-white">
+            Your timeline
+          </Link>
+          <Link to="/profile" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
+            Your card
+          </Link>
+        </div>
       )}
       {user?.role === 'employer' && <HiringCardList />}
       <ServerStatus health={health.data} isLoading={health.isPending} isError={health.isError} />

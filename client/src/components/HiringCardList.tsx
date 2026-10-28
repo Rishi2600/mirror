@@ -32,7 +32,7 @@ export function HiringCardList() {
       {cards.data.length === 0 && <p className="text-gray-600">No cards yet. Create one for each role you are hiring for.</p>}
       <ul className="flex flex-col gap-2">
         {cards.data.map((card) => (
-          <li key={card.id}>
+          <li key={card.id} className="flex flex-col gap-1">
             <Link
               to={`/hiring/${card.id}`}
               data-testid="hiring-card-item"
@@ -51,6 +51,11 @@ export function HiringCardList() {
                 {statusLabels[card.status]}
               </span>
             </Link>
+            {card.status === 'live' && (
+              <Link to={`/hiring/${card.id}/timeline`} className="self-end text-sm text-blue-700 underline">
+                See fitting candidates
+              </Link>
+            )}
           </li>
         ))}
       </ul>

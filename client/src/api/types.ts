@@ -161,3 +161,20 @@ export interface HiringPreview {
   // What the card needs before it can go live.
   missing: string[]
 }
+
+// Matches TimelineJob: one hiring card on a candidate's timeline.
+export interface TimelineJob {
+  card_id: string
+  view: JobView
+  // Pair score in [0, 1]; reasons say why the card is here.
+  score: number
+  reasons: string[]
+}
+
+// Matches TimelineCandidate: one candidate on a hiring card's timeline.
+export interface TimelineCandidate {
+  candidate_id: string
+  card: Card
+  score: number
+  reasons: string[]
+}

@@ -9,6 +9,8 @@ import type {
   HiringPreview,
   Preferences,
   Profile,
+  TimelineCandidate,
+  TimelineJob,
   User,
 } from './types'
 
@@ -104,5 +106,8 @@ export function createApiClient(baseUrl: string) {
       return request<HiringCard>('POST', `/v1/hiring-cards/${id}/image`, form)
     },
     previewHiringCard: (id: string) => request<HiringPreview>('GET', `/v1/hiring-cards/${id}/preview`),
+
+    getTimeline: () => request<TimelineJob[]>('GET', '/v1/timeline'),
+    getHiringCardTimeline: (id: string) => request<TimelineCandidate[]>('GET', `/v1/hiring-cards/${id}/timeline`),
   }
 }
