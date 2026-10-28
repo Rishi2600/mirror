@@ -26,14 +26,10 @@ function startStep(p: Profile | null) {
   return p?.parse_status === 'done' ? 1 : 0
 }
 
-// ProfilePage builds the candidate's card step by step.
+// ProfilePage loads the candidate's profile, then shows the card builder.
 export function ProfilePage() {
   const me = useMe()
   const profile = useProfile()
-  const queryClient = useQueryClient()
-  const [step, setStep] = useState<number | null>(null)
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
 
   if (me.data?.role !== 'candidate') {
     return <Navigate to="/" replace />
@@ -44,13 +40,22 @@ export function ProfilePage() {
   if (profile.isError) {
     return <ErrorMessage message="Could not load your profile. Reload the page to try again." />
   }
+  return <CardBuilder profile={profile.data} />
+}
 
-  const p = profile.data
-  const current = step ?? startStep(p)
+// CardBuilder builds the card step by step. The start step is picked once,
+// when the page opens; after that only the candidate moves between steps
+// (so the page never jumps when the CV finishes reading).
+function CardBuilder({ profile: p }: { profile: Profile | null }) {
+  const queryClient = useQueryClient()
+  const [current, setCurrent] = useState(() => startStep(p))
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
   const canJump = p?.parse_status === 'done'
   const go = (to: number) => {
     setError('')
-    setStep(to)
+    setCurrent(to)
   }
 
   async function next(changes?: ProfileChanges) {
