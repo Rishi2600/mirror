@@ -16,7 +16,9 @@ export function useSwipeQueue<T>(onSend: (swipe: Swipe<T>) => void, undoMs = UND
   const waitingRef = useRef<Swipe<T> | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const onSendRef = useRef(onSend)
-  onSendRef.current = onSend
+  useEffect(() => {
+    onSendRef.current = onSend
+  })
 
   const send = useCallback(() => {
     clearTimeout(timer.current)

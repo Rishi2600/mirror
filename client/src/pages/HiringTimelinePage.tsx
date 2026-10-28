@@ -1,19 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { CandidateCard } from '../components/CandidateCard'
 import { ErrorMessage } from '../components/form'
 import { MatchReasons } from '../components/MatchReasons'
+import { SwipeStack } from '../components/SwipeStack'
 import { api } from '../lib/api'
 import { useHiringCard } from '../lib/useHiringCards'
 import { useMe } from '../lib/useMe'
 
-// HiringTimelinePage: the candidates that fit one hiring card, best first.
+// HiringTimelinePage: the candidates that fit one hiring card, best first,
+// as a swipeable stack (swipes are saved in chunk 9).
 export function HiringTimelinePage() {
   const { id = '' } = useParams()
   const me = useMe()
   const card = useHiringCard(id)
   const timeline = useQuery({ queryKey: ['hiring-timeline', id], queryFn: () => api.getHiringCardTimeline(id), retry: false })
+  const [sent, setSent] = useState({ liked: 0, skipped: 0 })
 
   if (me.data?.role !== 'employer') {
     return <Navigate to="/" replace />
@@ -40,18 +44,26 @@ export function HiringTimelinePage() {
           </Link>
         </div>
       )}
-      {timeline.isSuccess && timeline.data.length === 0 && (
-        <p className="text-gray-600">No candidates fit this card yet. New candidates show up here as they join.</p>
-      )}
       {timeline.isSuccess && (
-        <ol className="flex flex-col gap-6">
-          {timeline.data.map((person) => (
-            <li key={person.candidate_id} data-testid="timeline-candidate" className="flex flex-col gap-2">
+        <SwipeStack
+          items={timeline.data}
+          getKey={(person) => person.candidate_id}
+          render={(person) => (
+            <div data-testid="timeline-candidate" className="flex flex-col gap-3 p-1">
               <CandidateCard card={person.card} />
               <MatchReasons score={person.score} reasons={person.reasons} />
-            </li>
-          ))}
-        </ol>
+            </div>
+          )}
+          onSend={(_, direction) =>
+            setSent((n) => (direction === 'right' ? { ...n, liked: n.liked + 1 } : { ...n, skipped: n.skipped + 1 }))
+          }
+          emptyMessage="You have seen every candidate who fits this card. New candidates show up here as they join."
+        />
+      )}
+      {(sent.liked > 0 || sent.skipped > 0) && (
+        <p data-testid="sent-count" className="text-center text-xs text-gray-500">
+          Sent this visit: {sent.liked} liked, {sent.skipped} skipped.
+        </p>
       )}
     </main>
   )
