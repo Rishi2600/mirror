@@ -3,6 +3,8 @@ import { RequireUser } from './components/RequireUser'
 import { ChooseRolePage } from './pages/ChooseRolePage'
 import { HiringCardPage } from './pages/HiringCardPage'
 import { HomePage } from './pages/HomePage'
+import { MatchesPage } from './pages/MatchesPage'
+import { MatchPage } from './pages/MatchPage'
 import { NewHiringCardPage } from './pages/NewHiringCardPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -21,6 +23,8 @@ export const router = createBrowserRouter([
       { path: '/profile', element: <ProfilePage /> },
       { path: '/hiring/new', element: <NewHiringCardPage /> },
       { path: '/hiring/:id', element: <HiringCardPage /> },
+      { path: '/matches', element: <MatchesPage /> },
+      { path: '/matches/:id', element: <MatchPage /> },
       // The timelines carry the swipe animation library, so they load only
       // when opened.
       {

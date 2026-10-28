@@ -45,9 +45,19 @@ export function HomePage() {
           <Link to="/profile" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
             Your card
           </Link>
+          <Link to="/matches" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
+            Your matches
+          </Link>
         </div>
       )}
-      {user?.role === 'employer' && <HiringCardList />}
+      {user?.role === 'employer' && (
+        <>
+          <Link to="/matches" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
+            Your matches
+          </Link>
+          <HiringCardList />
+        </>
+      )}
       <ServerStatus health={health.data} isLoading={health.isPending} isError={health.isError} />
     </main>
   )
