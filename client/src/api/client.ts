@@ -1,5 +1,16 @@
 // No DOM or Vite APIs in this folder, so React Native can reuse it.
-import type { CardPreview, CardSettings, CV, Health, Preferences, Profile, User } from './types'
+import type {
+  CardPreview,
+  CardSettings,
+  CV,
+  Health,
+  HiringCard,
+  HiringFields,
+  HiringPreview,
+  Preferences,
+  Profile,
+  User,
+} from './types'
 
 export type ApiClient = ReturnType<typeof createApiClient>
 
@@ -78,5 +89,20 @@ export function createApiClient(baseUrl: string) {
 
     getCard: () => request<CardPreview>('GET', '/v1/card'),
     finishCard: () => request<Profile>('POST', '/v1/card/finish'),
+
+    updateMe: (first_name: string) => request<User>('PUT', '/v1/me', { first_name }),
+
+    listHiringCards: () => request<HiringCard[]>('GET', '/v1/hiring-cards'),
+    createHiringCard: (description: string) => request<HiringCard>('POST', '/v1/hiring-cards', { description }),
+    getHiringCard: (id: string) => request<HiringCard>('GET', `/v1/hiring-cards/${id}`),
+    updateHiringCard: (id: string, fields: HiringFields) => request<HiringCard>('PUT', `/v1/hiring-cards/${id}`, fields),
+    setHiringCardStatus: (id: string, status: 'live' | 'closed') =>
+      request<HiringCard>('PUT', `/v1/hiring-cards/${id}/status`, { status }),
+    uploadHiringCardImage: (id: string, file: Blob) => {
+      const form = new FormData()
+      form.append('image', file)
+      return request<HiringCard>('POST', `/v1/hiring-cards/${id}/image`, form)
+    },
+    previewHiringCard: (id: string) => request<HiringPreview>('GET', `/v1/hiring-cards/${id}/preview`),
   }
 }

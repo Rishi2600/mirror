@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
+import { HiringCardList } from '../components/HiringCardList'
 import { ServerStatus } from '../components/ServerStatus'
 import { api } from '../lib/api'
 import { meQueryKey, useMe } from '../lib/useMe'
@@ -41,6 +42,7 @@ export function HomePage() {
           Your card
         </Link>
       )}
+      {user?.role === 'employer' && <HiringCardList />}
       <ServerStatus health={health.data} isLoading={health.isPending} isError={health.isError} />
     </main>
   )

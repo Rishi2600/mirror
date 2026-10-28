@@ -15,6 +15,8 @@ export interface User {
   email: string
   // Empty until the user picks candidate or employer.
   role: Role | ''
+  // Shown on an employer's hiring cards.
+  first_name: string
 }
 
 // Matches profiles.CV in server/internal/profiles/profiles.go.
@@ -115,4 +117,47 @@ export interface CardPreview {
   // What the card still needs before it can be finished.
   missing: string[]
   onboarded: boolean
+}
+
+// Matches hiring.Fields: the editable parts of a hiring card.
+export interface HiringFields {
+  title: string
+  company_name: string
+  location: string
+  work_mode: 'onsite' | 'hybrid' | 'remote' | ''
+  seniority: Seniority | ''
+  skills: string[]
+  summary: string
+  // Yearly, in pay_currency; 0 means not given.
+  pay_min: number
+  pay_max: number
+  pay_currency: string
+  visa_sponsorship: boolean
+}
+
+// Matches HiringCardResponse: one of the employer's own cards.
+export interface HiringCard extends HiringFields {
+  id: string
+  status: 'draft' | 'live' | 'closed'
+  description: string
+  // Empty until an image is uploaded.
+  image_url: string
+  created_at: string
+  updated_at: string
+}
+
+// Matches hiring.View: a hiring card as candidates see it.
+export interface JobView extends Omit<HiringFields, 'pay_min' | 'pay_max'> {
+  employer_first_name: string
+  image_url: string
+  pay_min: number
+  pay_max: number
+}
+
+// Matches HiringPreviewResponse.
+export interface HiringPreview {
+  view: JobView
+  removed: { emails: number; phones: number; links: number }
+  // What the card needs before it can go live.
+  missing: string[]
 }
