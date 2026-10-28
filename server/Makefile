@@ -12,13 +12,14 @@ HOST_GID := $(shell id -g)
 
 .PHONY: db-up db-down dev test fmt-check vet build check
 
-## db-up: start the local database (Docker Compose)
+## db-up: start Postgres and the embedding server (Docker Compose);
+## SERVICES=pg starts only Postgres (CI does this)
 db-up:
-	@# Create the folder first, or Docker creates it owned by root.
-	mkdir -p $(DATA_DIR)/pg
-	docker compose up -d --wait
+	@# Create the folders first, or Docker creates them owned by root.
+	mkdir -p $(DATA_DIR)/pg $(DATA_DIR)/models
+	docker compose up -d --wait $(SERVICES)
 
-## db-down: stop the local database (the data stays in DATA_DIR)
+## db-down: stop them (the data stays in DATA_DIR)
 db-down:
 	docker compose down
 

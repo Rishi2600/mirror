@@ -20,3 +20,25 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # Turns card text into meaning vectors (Hugging Face Text Embeddings
+  # Inference, CPU). The model and its revision are pinned; weights are
+  # downloaded once into DATA_DIR/models.
+  embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4
+    container_name: mirror-embed
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command:
+      - --model-id=intfloat/multilingual-e5-small
+      - --revision=614241f622f53c4eeff9890bdc4f31cfecc418b3
+    ports:
+      - "127.0.0.1:${EMBED_PORT:-8090}:80"
+    volumes:
+      - ${DATA_DIR:-./data}/models:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/health"]
+      interval: 5s
+      timeout: 3s
+      # The first start downloads about 470 MB of model weights.
+      start_period: 10m
+      retries: 3
