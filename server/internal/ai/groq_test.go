@@ -13,6 +13,7 @@ import (
 
 	"mirror/server/internal/dbtest"
 	"mirror/server/internal/events"
+	"mirror/server/internal/hiring"
 	"mirror/server/internal/profiles"
 )
 
@@ -81,24 +82,32 @@ func TestGroqErrorIsReturnedAndLogged(t *testing.T) {
 	}
 }
 
-// The schema's field names must match the JSON tags of profiles.CV.
-func TestSchemaMatchesCV(t *testing.T) {
-	var schema struct {
-		Required   []string                   `json:"required"`
-		Properties map[string]json.RawMessage `json:"properties"`
-	}
-	if err := json.Unmarshal([]byte(cvSchema), &schema); err != nil {
-		t.Fatalf("cvSchema is not valid JSON: %v", err)
-	}
+// Each schema's field names must match the JSON tags of its Go struct.
+func TestSchemasMatchStructs(t *testing.T) {
+	for name, tt := range map[string]struct {
+		schema string
+		value  any
+	}{
+		"cv":  {cvSchema, profiles.CV{}},
+		"job": {jobSchema, hiring.Fields{}},
+	} {
+		var schema struct {
+			Required   []string                   `json:"required"`
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		if err := json.Unmarshal([]byte(tt.schema), &schema); err != nil {
+			t.Fatalf("%s schema is not valid JSON: %v", name, err)
+		}
 
-	var tags []string
-	cvType := reflect.TypeOf(profiles.CV{})
-	for i := range cvType.NumField() {
-		tags = append(tags, cvType.Field(i).Tag.Get("json"))
-	}
-	slices.Sort(tags)
-	required := slices.Sorted(slices.Values(schema.Required))
-	if !slices.Equal(tags, required) || len(schema.Properties) != len(tags) {
-		t.Errorf("schema fields %v do not match profiles.CV fields %v", required, tags)
+		var tags []string
+		typ := reflect.TypeOf(tt.value)
+		for i := range typ.NumField() {
+			tags = append(tags, typ.Field(i).Tag.Get("json"))
+		}
+		slices.Sort(tags)
+		required := slices.Sorted(slices.Values(schema.Required))
+		if !slices.Equal(tags, required) || len(schema.Properties) != len(tags) {
+			t.Errorf("%s schema fields %v do not match the struct fields %v", name, required, tags)
+		}
 	}
 }
