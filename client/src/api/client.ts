@@ -7,8 +7,10 @@ import type {
   HiringCard,
   HiringFields,
   HiringPreview,
+  Match,
   Preferences,
   Profile,
+  SwipeResult,
   TimelineCandidate,
   TimelineJob,
   User,
@@ -29,12 +31,12 @@ export class ApiError extends Error {
 // An empty baseUrl means same origin. Credentials carry the session cookie.
 export function createApiClient(baseUrl: string) {
   // body is sent as JSON, or as a multipart form when it is FormData.
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
     const isForm = body instanceof FormData
     const res = await fetch(baseUrl + path, {
       method,
       credentials: 'include',
-      headers: body === undefined || isForm ? undefined : { 'Content-Type': 'application/json' },
+      headers: body === undefined || isForm ? headers : { 'Content-Type': 'application/json', ...headers },
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     })
     if (!res.ok) {
@@ -108,6 +110,13 @@ export function createApiClient(baseUrl: string) {
     previewHiringCard: (id: string) => request<HiringPreview>('GET', `/v1/hiring-cards/${id}/preview`),
 
     getTimeline: () => request<TimelineJob[]>('GET', '/v1/timeline'),
+
+    // key makes a retried swipe return the first answer instead of a new swipe.
+    swipe: (swipe: { hiring_card_id: string; candidate_id?: string; direction: 'left' | 'right' }, key: string) =>
+      request<SwipeResult>('POST', '/v1/swipes', swipe, { 'Idempotency-Key': key }),
+    listMatches: () => request<Match[]>('GET', '/v1/matches'),
+    getMatch: (id: string) => request<Match>('GET', `/v1/matches/${id}`),
+    unmatch: (id: string) => request<void>('DELETE', `/v1/matches/${id}`),
     getHiringCardTimeline: (id: string) => request<TimelineCandidate[]>('GET', `/v1/hiring-cards/${id}/timeline`),
   }
 }

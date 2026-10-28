@@ -2,20 +2,30 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate } from 'react-router'
 import { ApiError } from '../api/client'
+import type { TimelineJob } from '../api/types'
 import { ErrorMessage } from '../components/form'
 import { JobCard } from '../components/JobCard'
+import { MatchBanner } from '../components/MatchBanner'
 import { MatchReasons } from '../components/MatchReasons'
 import { SwipeStack } from '../components/SwipeStack'
 import { api } from '../lib/api'
+import { sendSwipe } from '../lib/sendSwipe'
 import { useMe } from '../lib/useMe'
 
 // TimelinePage: the hiring cards that fit the candidate, best first, as a
-// swipeable stack. Swipes are saved and matched in chunk 9; for now the page
-// counts the swipes that left the undo window.
+// swipeable stack. A like the employer already returned is a match.
 export function TimelinePage() {
   const me = useMe()
   const timeline = useQuery({ queryKey: ['timeline'], queryFn: api.getTimeline, retry: false })
-  const [sent, setSent] = useState({ liked: 0, skipped: 0 })
+  const [matchId, setMatchId] = useState('')
+  const [sendError, setSendError] = useState('')
+
+  // Called once a swipe leaves the undo window.
+  function send(job: TimelineJob, direction: 'left' | 'right') {
+    sendSwipe({ hiring_card_id: job.card_id, direction })
+      .then((res) => res?.matched && setMatchId(res.match_id))
+      .catch(() => setSendError('A swipe could not be saved. Check your connection and reload the page.'))
+  }
 
   if (me.data?.role !== 'candidate') {
     return <Navigate to="/" replace />
@@ -30,6 +40,7 @@ export function TimelinePage() {
         </Link>
       </div>
 
+      {matchId && <MatchBanner matchId={matchId} onClose={() => setMatchId('')} />}
       {timeline.isPending && <p className="text-gray-600">Finding jobs that fit you...</p>}
       {timeline.isError && (
         <div className="flex flex-col gap-2">
@@ -49,17 +60,11 @@ export function TimelinePage() {
               <MatchReasons score={job.score} reasons={job.reasons} />
             </div>
           )}
-          onSend={(_, direction) =>
-            setSent((n) => (direction === 'right' ? { ...n, liked: n.liked + 1 } : { ...n, skipped: n.skipped + 1 }))
-          }
+          onSend={send}
           emptyMessage="You have seen every job that fits your card. New jobs show up here as employers post them."
         />
       )}
-      {(sent.liked > 0 || sent.skipped > 0) && (
-        <p data-testid="sent-count" className="text-center text-xs text-gray-500">
-          Sent this visit: {sent.liked} liked, {sent.skipped} skipped.
-        </p>
-      )}
+      <ErrorMessage message={sendError} />
     </main>
   )
 }

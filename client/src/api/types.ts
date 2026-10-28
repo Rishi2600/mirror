@@ -177,4 +177,33 @@ export interface TimelineCandidate {
   card: Card
   score: number
   reasons: string[]
+  // True when the candidate already liked this card.
+  liked: boolean
+}
+
+// Matches SwipeResponse.
+export interface SwipeResult {
+  matched: boolean
+  match_id: string
+}
+
+// Matches Contact: revealed to the employer at a match.
+export interface Contact {
+  full_name: string
+  email: string
+  phone: string
+  cv: CV
+  // Downloads the CV; works for 15 minutes.
+  cv_url: string
+}
+
+// Matches MatchResponse: candidates get job, employers get the candidate
+// (and contact, on the match page).
+export interface Match {
+  id: string
+  matched_at: string
+  job?: JobView
+  hiring_card_title?: string
+  candidate?: Card
+  contact?: Contact
 }

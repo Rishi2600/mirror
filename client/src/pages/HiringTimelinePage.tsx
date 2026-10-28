@@ -2,22 +2,33 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
+import type { TimelineCandidate } from '../api/types'
 import { CandidateCard } from '../components/CandidateCard'
 import { ErrorMessage } from '../components/form'
+import { MatchBanner } from '../components/MatchBanner'
 import { MatchReasons } from '../components/MatchReasons'
 import { SwipeStack } from '../components/SwipeStack'
 import { api } from '../lib/api'
+import { sendSwipe } from '../lib/sendSwipe'
 import { useHiringCard } from '../lib/useHiringCards'
 import { useMe } from '../lib/useMe'
 
-// HiringTimelinePage: the candidates that fit one hiring card, best first,
-// as a swipeable stack (swipes are saved in chunk 9).
+// HiringTimelinePage: the candidates that fit one hiring card, as a
+// swipeable stack. Candidates who already liked the card come first.
 export function HiringTimelinePage() {
   const { id = '' } = useParams()
   const me = useMe()
   const card = useHiringCard(id)
   const timeline = useQuery({ queryKey: ['hiring-timeline', id], queryFn: () => api.getHiringCardTimeline(id), retry: false })
-  const [sent, setSent] = useState({ liked: 0, skipped: 0 })
+  const [matchId, setMatchId] = useState('')
+  const [sendError, setSendError] = useState('')
+
+  // Called once a swipe leaves the undo window.
+  function send(person: TimelineCandidate, direction: 'left' | 'right') {
+    sendSwipe({ hiring_card_id: id, candidate_id: person.candidate_id, direction })
+      .then((res) => res?.matched && setMatchId(res.match_id))
+      .catch(() => setSendError('A swipe could not be saved. Check your connection and reload the page.'))
+  }
 
   if (me.data?.role !== 'employer') {
     return <Navigate to="/" replace />
@@ -35,6 +46,7 @@ export function HiringTimelinePage() {
         </Link>
       </div>
 
+      {matchId && <MatchBanner matchId={matchId} onClose={() => setMatchId('')} />}
       {timeline.isPending && <p className="text-gray-600">Finding candidates who fit...</p>}
       {timeline.isError && (
         <div className="flex flex-col gap-2">
@@ -50,21 +62,20 @@ export function HiringTimelinePage() {
           getKey={(person) => person.candidate_id}
           render={(person) => (
             <div data-testid="timeline-candidate" className="flex flex-col gap-3 p-1">
+              {person.liked && (
+                <p className="self-start rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">
+                  Liked your card: like back to match
+                </p>
+              )}
               <CandidateCard card={person.card} />
               <MatchReasons score={person.score} reasons={person.reasons} />
             </div>
           )}
-          onSend={(_, direction) =>
-            setSent((n) => (direction === 'right' ? { ...n, liked: n.liked + 1 } : { ...n, skipped: n.skipped + 1 }))
-          }
+          onSend={send}
           emptyMessage="You have seen every candidate who fits this card. New candidates show up here as they join."
         />
       )}
-      {(sent.liked > 0 || sent.skipped > 0) && (
-        <p data-testid="sent-count" className="text-center text-xs text-gray-500">
-          Sent this visit: {sent.liked} liked, {sent.skipped} skipped.
-        </p>
-      )}
+      <ErrorMessage message={sendError} />
     </main>
   )
 }

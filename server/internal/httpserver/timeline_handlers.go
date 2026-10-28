@@ -32,6 +32,8 @@ type TimelineCandidate struct {
 	Card        profiles.Card `json:"card"`
 	Score       float64       `json:"score"`
 	Reasons     []string      `json:"reasons"`
+	// Liked is true when the candidate already liked this card.
+	Liked bool `json:"liked"`
 }
 
 // GET /v1/timeline: the live hiring cards that fit the candidate, best first.
@@ -93,7 +95,7 @@ func (s *server) hiringCardTimeline(w http.ResponseWriter, r *http.Request) {
 	out := []TimelineCandidate{}
 	for _, m := range matches {
 		card, _ := profiles.BuildCard(m.Profile, candidatePhotoURL(m.Profile))
-		out = append(out, TimelineCandidate{CandidateID: m.Profile.UserID, Card: card, Score: m.Score, Reasons: matching.Reasons(m.Scores)})
+		out = append(out, TimelineCandidate{CandidateID: m.Profile.UserID, Card: card, Score: m.Score, Reasons: matching.Reasons(m.Scores), Liked: m.Liked})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
