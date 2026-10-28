@@ -60,6 +60,15 @@ export interface Preferences {
   min_pay: number
   pay_currency: string
   needs_visa: boolean
+  // Companies that must never see the card.
+  hidden_from: string[]
+}
+
+// Matches profiles.CardSettings: what the card shows.
+export interface CardSettings {
+  employer_display: 'name' | 'description' | 'hidden'
+  employer_description: string
+  show_pay: boolean
 }
 
 // Matches ProfileResponse in server/internal/httpserver/profile_handlers.go.
@@ -69,5 +78,41 @@ export interface Profile {
   parse_error: string
   cv: CV
   preferences: Preferences
+  card_settings: CardSettings
+  // Empty until a photo is uploaded.
+  photo_url: string
+  // True once the card is finished (and live for employers).
+  onboarded: boolean
   updated_at: string
+}
+
+// Matches profiles.Card: what employers see before a match.
+export interface Card {
+  name: string
+  photo_url: string
+  headline: string
+  location: string
+  current_title: string
+  current_employer: string
+  years_experience: number
+  seniority: Seniority | ''
+  skills: string[]
+  summary: string
+  experience: Experience[]
+  education: Education[]
+  work_mode: WorkMode
+  role_types: string[]
+  // 0 when the candidate hides it.
+  min_pay: number
+  pay_currency: string
+}
+
+// Matches CardResponse in server/internal/httpserver/card_handlers.go.
+export interface CardPreview {
+  card: Card
+  // Contact details taken out of the card's text.
+  removed: { emails: number; phones: number; links: number }
+  // What the card still needs before it can be finished.
+  missing: string[]
+  onboarded: boolean
 }

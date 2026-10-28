@@ -38,7 +38,7 @@ export function HomePage() {
       )}
       {user?.role === 'candidate' && (
         <Link to="/profile" className="rounded bg-gray-900 px-3 py-2 text-center font-medium text-white">
-          Your profile
+          Your card
         </Link>
       )}
       <ServerStatus health={health.data} isLoading={health.isPending} isError={health.isError} />

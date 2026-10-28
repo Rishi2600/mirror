@@ -1,5 +1,5 @@
 // No DOM or Vite APIs in this folder, so React Native can reuse it.
-import type { CV, Health, Preferences, Profile, User } from './types'
+import type { CardPreview, CardSettings, CV, Health, Preferences, Profile, User } from './types'
 
 export type ApiClient = ReturnType<typeof createApiClient>
 
@@ -67,7 +67,16 @@ export function createApiClient(baseUrl: string) {
       return request<Profile>('POST', '/v1/profile/cv', form)
     },
 
-    updateProfile: (cv: CV, preferences: Preferences) =>
-      request<Profile>('PUT', '/v1/profile', { cv, preferences }),
+    updateProfile: (cv: CV, preferences: Preferences, card_settings: CardSettings) =>
+      request<Profile>('PUT', '/v1/profile', { cv, preferences, card_settings }),
+
+    uploadPhoto: (file: Blob) => {
+      const form = new FormData()
+      form.append('photo', file)
+      return request<Profile>('POST', '/v1/profile/photo', form)
+    },
+
+    getCard: () => request<CardPreview>('GET', '/v1/card'),
+    finishCard: () => request<Profile>('POST', '/v1/card/finish'),
   }
 }
