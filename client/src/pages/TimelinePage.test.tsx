@@ -3,10 +3,11 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
+import type { JobView } from '../api/types'
 import { api } from '../lib/api'
 import { TimelinePage } from './TimelinePage'
 
-const view = {
+const view: JobView = {
   title: 'Backend engineer (Go)', company_name: 'Example Payments', employer_first_name: 'Sam', image_url: '',
   location: '', work_mode: 'remote', seniority: 'senior', skills: ['Go'], summary: 'Build APIs.',
   pay_min: 0, pay_max: 0, pay_currency: 'USD', visa_sponsorship: false,
