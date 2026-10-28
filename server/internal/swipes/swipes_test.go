@@ -168,7 +168,12 @@ func TestMatchesAndUnmatch(t *testing.T) {
 func TestSimultaneousLikesMakeExactlyOneMatch(t *testing.T) {
 	db := dbtest.Conn(t)
 	// Remove this test's rows before (in case an earlier run crashed) and after.
-	cleanup := func() { db.Exec("DELETE FROM users WHERE email LIKE 'swipes._.race.%@example.com'") }
+	// Audit rows outlive their users on purpose, so they go first.
+	cleanup := func() {
+		db.Exec(`DELETE FROM audit_events WHERE actor_user_id IN
+			(SELECT id FROM users WHERE email LIKE 'swipes._.race.%@example.com')`)
+		db.Exec("DELETE FROM users WHERE email LIKE 'swipes._.race.%@example.com'")
+	}
 	cleanup()
 	t.Cleanup(cleanup)
 
