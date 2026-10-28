@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"mirror/server/internal/hiring"
 	"mirror/server/internal/mail"
 	"mirror/server/internal/storage"
 )
@@ -26,6 +27,7 @@ type Options struct {
 	SecureCookies bool
 	Files         *storage.Local
 	CVQueue       CVQueue
+	JobParser     hiring.JDParser
 }
 
 type server struct {
@@ -37,6 +39,7 @@ type server struct {
 	secureCookies bool
 	files         *storage.Local
 	cvQueue       CVQueue
+	jobParser     hiring.JDParser
 }
 
 // New returns the server's root handler.
@@ -50,6 +53,7 @@ func New(opts Options) http.Handler {
 		secureCookies: opts.SecureCookies,
 		files:         opts.Files,
 		cvQueue:       opts.CVQueue,
+		jobParser:     opts.JobParser,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -69,6 +73,15 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /v1/profile/photo", s.getPhoto)
 	mux.HandleFunc("GET /v1/card", s.getCard)
 	mux.HandleFunc("POST /v1/card/finish", s.finishCard)
+	mux.HandleFunc("PUT /v1/me", s.updateMe)
+	mux.HandleFunc("GET /v1/hiring-cards", s.listHiringCards)
+	mux.HandleFunc("POST /v1/hiring-cards", s.createHiringCard)
+	mux.HandleFunc("GET /v1/hiring-cards/{id}", s.getHiringCard)
+	mux.HandleFunc("PUT /v1/hiring-cards/{id}", s.updateHiringCard)
+	mux.HandleFunc("PUT /v1/hiring-cards/{id}/status", s.setHiringCardStatus)
+	mux.HandleFunc("POST /v1/hiring-cards/{id}/image", s.uploadHiringCardImage)
+	mux.HandleFunc("GET /v1/hiring-cards/{id}/image", s.getHiringCardImage)
+	mux.HandleFunc("GET /v1/hiring-cards/{id}/preview", s.previewHiringCard)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

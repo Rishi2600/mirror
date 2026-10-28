@@ -16,11 +16,12 @@ type UserResponse struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	// Role is "" until the user picks candidate or employer.
-	Role string `json:"role"`
+	Role      string `json:"role"`
+	FirstName string `json:"first_name"`
 }
 
 func toUserResponse(u users.User) UserResponse {
-	return UserResponse{ID: u.ID, Email: u.Email, Role: string(u.Role)}
+	return UserResponse{ID: u.ID, Email: u.Email, Role: string(u.Role), FirstName: u.FirstName}
 }
 
 // POST /v1/auth/otp/request {email}

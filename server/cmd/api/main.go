@@ -81,6 +81,7 @@ func run() error {
 			SecureCookies: cfg.Env != config.EnvDevelopment,
 			Files:         files,
 			CVQueue:       queue,
+			JobParser:     parser,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

@@ -56,15 +56,21 @@ func newAuthClient(t *testing.T) *authClient {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(New(Options{
-		Logger:  slog.New(slog.DiscardHandler),
-		DB:      tx,
-		Mailer:  mailer,
-		Files:   files,
-		CVQueue: queue,
+		Logger:    slog.New(slog.DiscardHandler),
+		DB:        tx,
+		Mailer:    mailer,
+		Files:     files,
+		CVQueue:   queue,
+		JobParser: fakeJobParser{},
 	}))
 	t.Cleanup(srv.Close)
+	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: newJar()}, mailer: mailer, queue: queue, tx: tx, files: files}
+}
+
+// newJar is an empty cookie jar: a new browser with nobody signed in.
+func newJar() http.CookieJar {
 	jar, _ := cookiejar.New(nil)
-	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: jar}, mailer: mailer, queue: queue, tx: tx, files: files}
+	return jar
 }
 
 // upload posts data as a multipart form file in field, like a browser form.
