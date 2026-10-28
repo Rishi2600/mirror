@@ -58,12 +58,16 @@ func ParseCV(ctx context.Context, db *gorm.DB, files *storage.Local, parser CVPa
 		return fmt.Errorf("parsing the CV with AI: %w", err)
 	}
 
+	// The current employer is hidden from the card by default.
+	cv = cleanCV(cv)
+	hiddenFrom := cleanList(append(p.HiddenFrom, cv.CurrentEmployer))
+
 	// Only update if this file is still the current CV. A struct update (not
-	// a map) so GORM stores CV as JSON; Select includes the empty parse_error.
+	// a map) so GORM stores JSON columns; Select includes the empty parse_error.
 	return db.WithContext(ctx).Model(&Profile{}).
 		Where("user_id = ? AND cv_file_id = ?", userID, fileID).
-		Select("cv", "parse_status", "parse_error", "updated_at").
-		Updates(&Profile{CV: cleanCV(cv), ParseStatus: StatusDone}).Error
+		Select("cv", "hidden_from", "parse_status", "parse_error", "updated_at").
+		Updates(&Profile{CV: cv, HiddenFrom: hiddenFrom, ParseStatus: StatusDone}).Error
 }
 
 // MarkFailed records that the CV could not be read, with a message for the
@@ -88,6 +92,17 @@ func ValidatePreferences(p Preferences) error {
 	return nil
 }
 
+// ValidateCardSettings checks the card choices.
+func ValidateCardSettings(c CardSettings) error {
+	if !slices.Contains([]string{"name", "description", "hidden"}, c.EmployerDisplay) {
+		return errors.New("employer_display must be name, description or hidden")
+	}
+	if c.EmployerDisplay == "description" && strings.TrimSpace(c.EmployerDescription) == "" {
+		return errors.New("describe your current employer, or pick another option")
+	}
+	return nil
+}
+
 // cleanCV trims text, drops empty and repeated skills, and keeps seniority
 // to the allowed values.
 func cleanCV(cv CV) CV {
@@ -103,6 +118,12 @@ func cleanCV(cv CV) CV {
 	cv.Skills = cleanList(cv.Skills)
 	if cv.Experience == nil {
 		cv.Experience = []Experience{}
+	}
+	for i, job := range cv.Experience {
+		cv.Experience[i] = Experience{
+			Title: trim(job.Title), Company: trim(job.Company),
+			Start: trim(job.Start), End: trim(job.End), Summary: trim(job.Summary),
+		}
 	}
 	if cv.Education == nil {
 		cv.Education = []Education{}

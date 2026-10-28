@@ -12,6 +12,7 @@ import (
 
 // AICall is one LLM request, logged for cost and debugging.
 type AICall struct {
+	ID           int64 // set by the database
 	Purpose      string
 	Model        string
 	InputTokens  int

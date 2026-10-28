@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"os"
 	"strings"
 	"testing"
@@ -25,10 +27,11 @@ type fakeParser struct {
 func (f *fakeParser) ParseCV(ctx context.Context, text string) (CV, error) {
 	f.text = text
 	return CV{
-		FullName:  "  Jordan Example ",
-		Headline:  "Senior backend engineer",
-		Seniority: "Senior",
-		Skills:    []string{"Go", "go", " PostgreSQL ", ""},
+		FullName:        "  Jordan Example ",
+		Headline:        "Senior backend engineer",
+		Seniority:       "Senior",
+		CurrentEmployer: "Fictional Payments Ltd",
+		Skills:          []string{"Go", "go", " PostgreSQL ", ""},
 	}, f.err
 }
 
@@ -91,6 +94,9 @@ func TestUploadThenParse(t *testing.T) {
 	}
 	if strings.Join(p.CV.Skills, ",") != "Go,PostgreSQL" {
 		t.Errorf("skills = %q, want trimmed with repeats removed", p.CV.Skills)
+	}
+	if strings.Join(p.HiddenFrom, ",") != "Fictional Payments Ltd" {
+		t.Errorf("hidden_from = %q, want the current employer", p.HiddenFrom)
 	}
 }
 
@@ -158,12 +164,13 @@ func TestUpdate(t *testing.T) {
 	_, fileID, _ := UploadCV(e.ctx, e.tx, e.files, e.user, sampleCV(t))
 	prefs := Preferences{RoleTypes: []string{"Backend", " backend "}, WorkMode: "remote", MinPay: 90000, PayCurrency: "EUR", NeedsVisa: true}
 
-	if _, err := Update(e.ctx, e.tx, e.user, CV{FullName: "J"}, prefs); !errors.Is(err, ErrParsing) {
+	settings := CardSettings{EmployerDisplay: "name", ShowPay: true}
+	if _, err := Update(e.ctx, e.tx, e.user, CV{FullName: "J"}, prefs, settings); !errors.Is(err, ErrParsing) {
 		t.Errorf("Update while parsing: error = %v, want ErrParsing", err)
 	}
 
 	ParseCV(e.ctx, e.tx, e.files, &fakeParser{}, e.user, fileID)
-	if _, err := Update(e.ctx, e.tx, e.user, CV{FullName: "Jordan E."}, prefs); err != nil {
+	if _, err := Update(e.ctx, e.tx, e.user, CV{FullName: "Jordan E."}, prefs, settings); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	p, _ := Get(e.ctx, e.tx, e.user)
@@ -199,5 +206,55 @@ func emptyDOCX(t *testing.T) []byte {
 	w, _ := z.Create("word/document.xml")
 	w.Write([]byte(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>`))
 	z.Close()
+	return buf.Bytes()
+}
+
+func TestPhotoAndFinish(t *testing.T) {
+	e := setup(t)
+	_, fileID, _ := UploadCV(e.ctx, e.tx, e.files, e.user, sampleCV(t))
+	ParseCV(e.ctx, e.tx, e.files, &fakeParser{}, e.user, fileID)
+
+	var missing MissingError
+	if _, err := Finish(e.ctx, e.tx, e.user); !errors.As(err, &missing) || len(missing.Missing) != 1 {
+		t.Fatalf("Finish without a photo: error = %v, want MissingError for the photo", err)
+	}
+
+	if _, err := SetPhoto(e.ctx, e.tx, e.files, e.user, []byte("not an image")); err == nil {
+		t.Error("SetPhoto accepted a non-image")
+	}
+	for range 2 { // the second photo replaces the first
+		if _, err := SetPhoto(e.ctx, e.tx, e.files, e.user, tinyPNG(t)); err != nil {
+			t.Fatalf("SetPhoto: %v", err)
+		}
+	}
+	var photos int64
+	e.tx.Model(&File{}).Where("owner_user_id = ? AND kind = 'photo'", e.user).Count(&photos)
+	if photos != 1 {
+		t.Errorf("%d photo files, want only the latest", photos)
+	}
+	if jpg, err := Photo(e.ctx, e.tx, e.files, e.user); err != nil || !bytes.HasPrefix(jpg, []byte{0xFF, 0xD8}) {
+		t.Errorf("Photo = %d bytes, %v; want a JPEG", len(jpg), err)
+	}
+
+	if _, err := Finish(e.ctx, e.tx, e.user); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	p, _ := Get(e.ctx, e.tx, e.user)
+	if p.OnboardedAt == nil {
+		t.Fatal("onboarded_at is not set")
+	}
+	Finish(e.ctx, e.tx, e.user)
+	if again, _ := Get(e.ctx, e.tx, e.user); !again.OnboardedAt.Equal(*p.OnboardedAt) {
+		t.Error("finishing again changed onboarded_at")
+	}
+}
+
+// tinyPNG is a 2x2 PNG image.
+func tinyPNG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
 	return buf.Bytes()
 }

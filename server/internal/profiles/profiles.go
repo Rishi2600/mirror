@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -69,6 +70,16 @@ type Preferences struct {
 	MinPay      int      `json:"min_pay"`
 	PayCurrency string   `json:"pay_currency"`
 	NeedsVisa   bool     `json:"needs_visa"`
+	// HiddenFrom lists companies that must never see the card.
+	HiddenFrom []string `json:"hidden_from"`
+}
+
+// CardSettings are the candidate's choices about what the card shows.
+type CardSettings struct {
+	// EmployerDisplay is name, description or hidden.
+	EmployerDisplay     string `json:"employer_display"`
+	EmployerDescription string `json:"employer_description"`
+	ShowPay             bool   `json:"show_pay"`
 }
 
 // Profile is one row of candidate_profiles.
@@ -84,11 +95,29 @@ type Profile struct {
 	MinPay      int
 	PayCurrency string
 	NeedsVisa   bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	HiddenFrom  []string `gorm:"serializer:json"`
+
+	PhotoFileID         *string
+	EmployerDisplay     string
+	EmployerDescription string
+	ShowPay             bool
+	// OnboardedAt is set when the card is finished; the card is live from then.
+	OnboardedAt *time.Time
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (Profile) TableName() string { return "candidate_profiles" }
+
+// CardSettings returns the profile's card choices as one value.
+func (p Profile) CardSettings() CardSettings {
+	return CardSettings{
+		EmployerDisplay:     p.EmployerDisplay,
+		EmployerDescription: p.EmployerDescription,
+		ShowPay:             p.ShowPay,
+	}
+}
 
 // Preferences returns the profile's preference columns as one value.
 func (p Profile) Preferences() Preferences {
@@ -99,6 +128,7 @@ func (p Profile) Preferences() Preferences {
 		MinPay:      p.MinPay,
 		PayCurrency: p.PayCurrency,
 		NeedsVisa:   p.NeedsVisa,
+		HiddenFrom:  p.HiddenFrom,
 	}
 }
 
@@ -182,19 +212,22 @@ func UploadCV(ctx context.Context, db *gorm.DB, files *storage.Local, userID str
 // newProfile is an empty pending profile with default preferences.
 func newProfile(userID string) Profile {
 	return Profile{
-		UserID:      userID,
-		ParseStatus: StatusPending,
-		CV:          CV{Skills: []string{}, Experience: []Experience{}, Education: []Education{}},
-		RoleTypes:   []string{},
-		Locations:   []string{},
-		WorkMode:    "any",
-		PayCurrency: "USD",
+		UserID:          userID,
+		ParseStatus:     StatusPending,
+		CV:              CV{Skills: []string{}, Experience: []Experience{}, Education: []Education{}},
+		RoleTypes:       []string{},
+		Locations:       []string{},
+		WorkMode:        "any",
+		PayCurrency:     "USD",
+		HiddenFrom:      []string{},
+		EmployerDisplay: "name",
+		ShowPay:         true,
 	}
 }
 
 // Update saves the candidate's edits. It is refused while a CV is being read,
 // because the parse result would overwrite the edits.
-func Update(ctx context.Context, db *gorm.DB, userID string, cv CV, prefs Preferences) (Profile, error) {
+func Update(ctx context.Context, db *gorm.DB, userID string, cv CV, prefs Preferences, settings CardSettings) (Profile, error) {
 	p, err := Get(ctx, db, userID)
 	if err != nil {
 		return Profile{}, err
@@ -210,8 +243,13 @@ func Update(ctx context.Context, db *gorm.DB, userID string, cv CV, prefs Prefer
 	p.MinPay = prefs.MinPay
 	p.PayCurrency = prefs.PayCurrency
 	p.NeedsVisa = prefs.NeedsVisa
+	p.HiddenFrom = cleanList(prefs.HiddenFrom)
+	p.EmployerDisplay = settings.EmployerDisplay
+	p.EmployerDescription = strings.TrimSpace(settings.EmployerDescription)
+	p.ShowPay = settings.ShowPay
 	err = db.WithContext(ctx).Model(&p).
-		Select("cv", "role_types", "locations", "work_mode", "min_pay", "pay_currency", "needs_visa", "updated_at").
+		Select("cv", "role_types", "locations", "work_mode", "min_pay", "pay_currency", "needs_visa",
+			"hidden_from", "employer_display", "employer_description", "show_pay", "updated_at").
 		Updates(&p).Error
 	return p, err
 }
