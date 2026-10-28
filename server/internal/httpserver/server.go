@@ -29,6 +29,8 @@ type Options struct {
 	CVQueue       CVQueue
 	JobParser     hiring.JDParser
 	EmbedQueue    EmbedQueue
+	// SigningKey signs download links (CVs).
+	SigningKey []byte
 }
 
 type server struct {
@@ -42,6 +44,7 @@ type server struct {
 	cvQueue       CVQueue
 	jobParser     hiring.JDParser
 	embedQueue    EmbedQueue
+	signingKey    []byte
 }
 
 // New returns the server's root handler.
@@ -57,6 +60,7 @@ func New(opts Options) http.Handler {
 		cvQueue:       opts.CVQueue,
 		jobParser:     opts.JobParser,
 		embedQueue:    opts.EmbedQueue,
+		signingKey:    opts.SigningKey,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -89,6 +93,11 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /v1/timeline", s.candidateTimeline)
 	mux.HandleFunc("GET /v1/jobs/{id}/image", s.jobImage)
 	mux.HandleFunc("GET /v1/candidates/{id}/photo", s.candidatePhoto)
+	mux.HandleFunc("POST /v1/swipes", s.createSwipe)
+	mux.HandleFunc("GET /v1/matches", s.listMatches)
+	mux.HandleFunc("GET /v1/matches/{id}", s.getMatch)
+	mux.HandleFunc("DELETE /v1/matches/{id}", s.unmatch)
+	mux.HandleFunc("GET /v1/matches/{id}/cv", s.downloadCV)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

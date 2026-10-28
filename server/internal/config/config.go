@@ -47,6 +47,9 @@ type Config struct {
 	FileKey []byte
 	// EmbedURL is EMBED_URL, the local embedding server (compose.yaml).
 	EmbedURL string
+	// SigningKey is FILE_SIGNING_KEY decoded: 32 bytes that sign download
+	// links (CVs), so a link works only until it expires.
+	SigningKey []byte
 }
 
 // Defaults for unset variables.
@@ -112,6 +115,10 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.FileKey, err = base64.StdEncoding.DecodeString(getenv("FILE_ENCRYPTION_KEY"))
 	if err != nil || len(cfg.FileKey) != 32 {
 		errs = append(errs, errors.New("FILE_ENCRYPTION_KEY must be 32 bytes in base64; make one with: openssl rand -base64 32"))
+	}
+	cfg.SigningKey, err = base64.StdEncoding.DecodeString(getenv("FILE_SIGNING_KEY"))
+	if err != nil || len(cfg.SigningKey) != 32 {
+		errs = append(errs, errors.New("FILE_SIGNING_KEY must be 32 bytes in base64; make one with: openssl rand -base64 32"))
 	}
 
 	if len(errs) > 0 {

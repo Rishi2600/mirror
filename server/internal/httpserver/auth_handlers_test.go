@@ -76,6 +76,7 @@ func newAuthClient(t *testing.T) *authClient {
 		CVQueue:    queue,
 		JobParser:  fakeJobParser{},
 		EmbedQueue: queue,
+		SigningKey: bytes.Repeat([]byte{2}, 32),
 	}))
 	t.Cleanup(srv.Close)
 	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: newJar()}, mailer: mailer, queue: queue, tx: tx, files: files}

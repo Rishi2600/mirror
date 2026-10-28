@@ -97,6 +97,7 @@ func run() error {
 			CVQueue:       queue,
 			JobParser:     parser,
 			EmbedQueue:    queue,
+			SigningKey:    cfg.SigningKey,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

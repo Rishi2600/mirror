@@ -135,6 +135,17 @@ func Get(ctx context.Context, db *gorm.DB, employerID, id string) (Card, error) 
 	return c, err
 }
 
+// ByID returns any card by ID. Callers check access (for example, through a
+// match the viewer is part of).
+func ByID(ctx context.Context, db *gorm.DB, id string) (Card, error) {
+	var c Card
+	err := db.WithContext(ctx).Where("id::text = ?", id).First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Card{}, ErrNotFound
+	}
+	return c, err
+}
+
 // Update saves the employer's edits to a card.
 func Update(ctx context.Context, db *gorm.DB, employerID, id string, f Fields) (Card, error) {
 	c, err := Get(ctx, db, employerID, id)
