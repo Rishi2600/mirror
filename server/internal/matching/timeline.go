@@ -42,6 +42,16 @@ const hardFilters = `
 			- array_position(ARRAY['intern','junior','mid','senior','lead','principal'], p.seniority)) <= 1)
 	AND NOT (h.company_name <> '' AND jsonb_exists(p.hidden_keys, lower(trim(h.company_name))))`
 
+// notSwipedBy leaves out pairs the viewing side already swiped, and pairs
+// either side skipped (a skip ends the pair for both).
+func notSwipedBy(side string) string {
+	return `
+	AND NOT EXISTS (
+		SELECT 1 FROM swipes s
+		WHERE s.hiring_card_id = h.id AND s.candidate_user_id = p.user_id
+			AND (s.side = '` + side + `' OR s.direction = 'left'))`
+}
+
 // JobMatch is one hiring card on a candidate's timeline.
 type JobMatch struct {
 	Card      hiring.Card
@@ -56,6 +66,9 @@ type CandidateMatch struct {
 	Profile profiles.Profile
 	Scores  Scores
 	Score   float64
+	// Liked is true when the candidate already liked this card; they come
+	// first, because one more like makes a match.
+	Liked bool
 }
 
 // CandidateTimeline returns the live hiring cards that fit a candidate,
@@ -76,7 +89,7 @@ func CandidateTimeline(ctx context.Context, db *gorm.DB, p profiles.Profile) ([]
 		JOIN hiring_cards h ON true
 		JOIN embeddings he ON he.owner_type = 'hiring_card' AND he.owner_id = h.id AND he.model = @model
 		JOIN users u ON u.id = h.employer_user_id
-		WHERE p.user_id = @user AND `+hardFilters+`
+		WHERE p.user_id = @user AND `+hardFilters+notSwipedBy("candidate")+`
 		ORDER BY he.embedding <=> pe.embedding
 		LIMIT @nearest`,
 		map[string]any{"model": embed.Model, "user": p.UserID, "nearest": nearest}).Scan(&rows).Error
@@ -94,8 +107,8 @@ func CandidateTimeline(ctx context.Context, db *gorm.DB, p profiles.Profile) ([]
 }
 
 // HiringCardTimeline returns the finished candidate cards that fit a live
-// hiring card, best first. (Candidates who already liked the card will go
-// first once swipes exist, in chunk 9.)
+// hiring card: those who already liked the card first, then the rest, each
+// group best first.
 func HiringCardTimeline(ctx context.Context, db *gorm.DB, c hiring.Card) ([]CandidateMatch, error) {
 	if !hasVector(ctx, db, OwnerHiringCard, c.ID) {
 		return nil, ErrNoVector
@@ -103,15 +116,18 @@ func HiringCardTimeline(ctx context.Context, db *gorm.DB, c hiring.Card) ([]Cand
 	var rows []struct {
 		profiles.Profile `gorm:"embedded"`
 		Cosine           float64
+		Liked            bool
 	}
 	err := db.WithContext(ctx).Raw(`
-		SELECT p.*, 1 - (pe.embedding <=> he.embedding) AS cosine
+		SELECT p.*, 1 - (pe.embedding <=> he.embedding) AS cosine,
+			EXISTS (SELECT 1 FROM swipes s WHERE s.hiring_card_id = h.id AND s.candidate_user_id = p.user_id
+				AND s.side = 'candidate' AND s.direction = 'right') AS liked
 		FROM hiring_cards h
 		JOIN embeddings he ON he.owner_type = 'hiring_card' AND he.owner_id = h.id AND he.model = @model
 		JOIN candidate_profiles p ON true
 		JOIN embeddings pe ON pe.owner_type = 'candidate' AND pe.owner_id = p.user_id AND pe.model = @model
-		WHERE h.id = @card AND `+hardFilters+`
-		ORDER BY pe.embedding <=> he.embedding
+		WHERE h.id = @card AND `+hardFilters+notSwipedBy("employer")+`
+		ORDER BY liked DESC, pe.embedding <=> he.embedding
 		LIMIT @nearest`,
 		map[string]any{"model": embed.Model, "card": c.ID, "nearest": nearest}).Scan(&rows).Error
 	if err != nil {
@@ -121,9 +137,14 @@ func HiringCardTimeline(ctx context.Context, db *gorm.DB, c hiring.Card) ([]Cand
 	matches := make([]CandidateMatch, 0, len(rows))
 	for _, r := range rows {
 		s := scorePair(r.Profile, c, r.Cosine)
-		matches = append(matches, CandidateMatch{Profile: r.Profile, Scores: s, Score: PairScore(s.Fit, s.Fit)})
+		matches = append(matches, CandidateMatch{Profile: r.Profile, Scores: s, Score: PairScore(s.Fit, s.Fit), Liked: r.Liked})
 	}
-	sort.SliceStable(matches, func(i, j int) bool { return matches[i].Score > matches[j].Score })
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].Liked != matches[j].Liked {
+			return matches[i].Liked
+		}
+		return matches[i].Score > matches[j].Score
+	})
 	return matches, nil
 }
 

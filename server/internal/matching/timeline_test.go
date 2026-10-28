@@ -247,3 +247,64 @@ func TestSpreadEmployers(t *testing.T) {
 		t.Errorf("order = %v, want no more than 3 from one employer in a row while others wait", got)
 	}
 }
+
+// swiped stores a swipe row directly (the swipes package is tested on its own).
+func (w world) swiped(t *testing.T, side, actorID, cardID, candidateID, direction string) {
+	t.Helper()
+	err := w.tx.Exec(`INSERT INTO swipes (side, actor_user_id, hiring_card_id, candidate_user_id, direction, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, gen_random_uuid()::text)`, side, actorID, cardID, candidateID, direction).Error
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSwipedPairsLeaveTheCandidateTimeline(t *testing.T) {
+	w := newWorld(t)
+	me := w.candidate(t, "swiper@example.com", nil)
+	liked := w.card(t, "Go card I liked", nil)
+	skippedByEmployer := w.card(t, "Go card whose employer skipped me", nil)
+	w.card(t, "Go card nobody swiped", nil)
+
+	w.swiped(t, "candidate", me.UserID, liked.ID, me.UserID, "right")
+	w.swiped(t, "employer", w.employer, skippedByEmployer.ID, me.UserID, "left")
+
+	matches, _ := CandidateTimeline(w.ctx, w.tx, me)
+	if got := w.titles(matches); got != "Go card nobody swiped" {
+		t.Errorf("timeline = %q; want only the card no one swiped", got)
+	}
+}
+
+func TestLikersComeFirstOnAHiringCardTimeline(t *testing.T) {
+	w := newWorld(t)
+	card := w.card(t, "Go backend engineer", nil)
+	best := w.candidate(t, "best.fit@example.com", nil)
+	liker := w.candidate(t, "liker@example.com", func(p *profiles.Profile) {
+		p.CV.Headline, p.CV.Skills = "Product design lead", []string{"Figma"}
+	})
+	skipper := w.candidate(t, "skipper@example.com", nil)
+
+	w.swiped(t, "candidate", liker.UserID, card.ID, liker.UserID, "right")
+	w.swiped(t, "candidate", skipper.UserID, card.ID, skipper.UserID, "left")
+
+	matches, err := HiringCardTimeline(w.ctx, w.tx, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, m := range matches {
+		switch m.Profile.UserID {
+		case best.UserID:
+			order = append(order, "best fit")
+		case liker.UserID:
+			order = append(order, "liker")
+		case skipper.UserID:
+			order = append(order, "skipper")
+		}
+	}
+	if strings.Join(order, ", ") != "liker, best fit" {
+		t.Errorf("order = %v; want the liker first (despite a lower fit) and the skipper gone", order)
+	}
+	if !matches[0].Liked {
+		t.Error("the first candidate is not marked as having liked the card")
+	}
+}
