@@ -237,13 +237,13 @@ func Update(ctx context.Context, db *gorm.DB, userID string, cv CV, prefs Prefer
 	}
 
 	p.CV = cleanCV(cv)
-	p.RoleTypes = cleanList(prefs.RoleTypes)
-	p.Locations = cleanList(prefs.Locations)
+	p.RoleTypes = CleanList(prefs.RoleTypes)
+	p.Locations = CleanList(prefs.Locations)
 	p.WorkMode = prefs.WorkMode
 	p.MinPay = prefs.MinPay
 	p.PayCurrency = prefs.PayCurrency
 	p.NeedsVisa = prefs.NeedsVisa
-	p.HiddenFrom = cleanList(prefs.HiddenFrom)
+	p.HiddenFrom = CleanList(prefs.HiddenFrom)
 	p.EmployerDisplay = settings.EmployerDisplay
 	p.EmployerDescription = strings.TrimSpace(settings.EmployerDescription)
 	p.ShowPay = settings.ShowPay

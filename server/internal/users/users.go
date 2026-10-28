@@ -22,7 +22,9 @@ type User struct {
 	ID    string `gorm:"type:uuid;default:gen_random_uuid()"`
 	Email string
 	// Role is empty until the user picks one (stored as NULL).
-	Role      Role `gorm:"default:null"`
+	Role Role `gorm:"default:null"`
+	// FirstName is shown on an employer's hiring cards.
+	FirstName string
 	CreatedAt time.Time
 }
 
@@ -84,6 +86,12 @@ func SetRole(ctx context.Context, db *gorm.DB, id string, role Role) error {
 		return ErrRoleSet
 	}
 	return nil
+}
+
+// SetFirstName saves the user's first name.
+func SetFirstName(ctx context.Context, db *gorm.DB, id, firstName string) error {
+	return db.WithContext(ctx).Model(&User{}).Where("id = ?", id).
+		Update("first_name", strings.TrimSpace(firstName)).Error
 }
 
 // NormalizeEmail trims and lowercases an email, the form it is stored in.

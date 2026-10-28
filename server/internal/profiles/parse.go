@@ -60,7 +60,7 @@ func ParseCV(ctx context.Context, db *gorm.DB, files *storage.Local, parser CVPa
 
 	// The current employer is hidden from the card by default.
 	cv = cleanCV(cv)
-	hiddenFrom := cleanList(append(p.HiddenFrom, cv.CurrentEmployer))
+	hiddenFrom := CleanList(append(p.HiddenFrom, cv.CurrentEmployer))
 
 	// Only update if this file is still the current CV. A struct update (not
 	// a map) so GORM stores JSON columns; Select includes the empty parse_error.
@@ -115,7 +115,7 @@ func cleanCV(cv CV) CV {
 		cv.Seniority = ""
 	}
 	cv.YearsExperience = max(cv.YearsExperience, 0)
-	cv.Skills = cleanList(cv.Skills)
+	cv.Skills = CleanList(cv.Skills)
 	if cv.Experience == nil {
 		cv.Experience = []Experience{}
 	}
@@ -131,8 +131,8 @@ func cleanCV(cv CV) CV {
 	return cv
 }
 
-// cleanList trims items and drops empty and repeated ones (ignoring case).
-func cleanList(items []string) []string {
+// CleanList trims items and drops empty and repeated ones (ignoring case).
+func CleanList(items []string) []string {
 	out := []string{}
 	seen := map[string]bool{}
 	for _, item := range items {
