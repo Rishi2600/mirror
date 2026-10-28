@@ -121,7 +121,9 @@ func (w world) titles(matches []JobMatch) string {
 func TestCandidateTimelineFiltersAndOrders(t *testing.T) {
 	w := newWorld(t)
 	me := w.candidate(t, "me@example.com", func(p *profiles.Profile) {
-		p.WorkMode, p.MinPay, p.HiddenFrom = "remote", 80000, []string{" Current Co "}
+		// Stored trimmed, as profiles.CleanList saves it; the case differs
+		// from the card's company on purpose.
+		p.WorkMode, p.MinPay, p.HiddenFrom = "remote", 80000, []string{"Current Co"}
 	})
 
 	w.card(t, "Go backend engineer", nil)

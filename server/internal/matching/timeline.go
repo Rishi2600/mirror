@@ -25,7 +25,9 @@ const maxInARow = 3
 var ErrNoVector = errors.New("this card is still being prepared for matching; try again in a moment")
 
 // Hard filters shared by both timelines (paper, section 6.1). They compare
-// a candidate profile "p" with a hiring card "h".
+// a candidate profile "p" with a hiring card "h". p.seniority and
+// p.hidden_keys are generated columns (migration 00009), so no row's cv JSON
+// is unpacked.
 const hardFilters = `
 	h.status = 'live'
 	AND p.onboarded_at IS NOT NULL
@@ -35,12 +37,10 @@ const hardFilters = `
 		OR (p.work_mode = 'hybrid' AND h.work_mode = 'remote')
 		OR (p.work_mode = 'onsite' AND h.work_mode = 'hybrid'))
 	AND (NOT p.needs_visa OR h.visa_sponsorship)
-	AND (h.seniority = '' OR coalesce(p.cv->>'seniority', '') = ''
+	AND (h.seniority = '' OR p.seniority = ''
 		OR abs(array_position(ARRAY['intern','junior','mid','senior','lead','principal'], h.seniority)
-			- array_position(ARRAY['intern','junior','mid','senior','lead','principal'], p.cv->>'seniority')) <= 1)
-	AND NOT EXISTS (
-		SELECT 1 FROM jsonb_array_elements_text(p.hidden_from) AS hidden(name)
-		WHERE h.company_name <> '' AND lower(trim(hidden.name)) = lower(trim(h.company_name)))`
+			- array_position(ARRAY['intern','junior','mid','senior','lead','principal'], p.seniority)) <= 1)
+	AND NOT (h.company_name <> '' AND jsonb_exists(p.hidden_keys, lower(trim(h.company_name))))`
 
 // JobMatch is one hiring card on a candidate's timeline.
 type JobMatch struct {
