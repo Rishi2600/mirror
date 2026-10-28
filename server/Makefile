@@ -10,7 +10,7 @@ DATA_DIR ?= ./data
 HOST_UID := $(shell id -u)
 HOST_GID := $(shell id -g)
 
-.PHONY: db-up db-down dev test fmt-check vet build check
+.PHONY: db-up db-down dev seed test fmt-check vet build check
 
 ## db-up: start Postgres and the embedding server (Docker Compose);
 ## SERVICES=pg starts only Postgres (CI does this)
@@ -26,6 +26,11 @@ db-down:
 ## dev: run the API from source
 dev:
 	go run -ldflags "$(LDFLAGS)" ./cmd/api
+
+## seed: fill the dev database with made-up candidates and hiring cards, and
+## report how well the timelines match them (needs make db-up)
+seed:
+	go run ./cmd/seed
 
 ## test: run all tests
 test:

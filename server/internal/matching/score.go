@@ -18,12 +18,16 @@ const (
 	weightPay       = 0.15
 )
 
-// Cosine floor and ceiling for rescaling s_vector; to be tuned once we see
-// real cosines from the model.
-const (
-	cosineFloor   = 0.2
-	cosineCeiling = 0.9
-)
+// Calibration rescales cosines into s_vector. It depends on the model.
+type Calibration struct {
+	Floor, Ceiling float64
+}
+
+// modelCalibration is measured for multilingual-e5-small on the seed set
+// (make seed): cross-field pairs score about 0.80 to 0.91 (median 0.85),
+// same-field pairs 0.88 to 0.96 (median 0.91). The paper's starting values
+// (0.2, 0.9) would give almost every pair s_vector near 1.
+var modelCalibration = Calibration{Floor: 0.80, Ceiling: 0.95}
 
 var levels = []string{"intern", "junior", "mid", "senior", "lead", "principal"}
 
@@ -54,8 +58,12 @@ type Scores struct {
 // Score computes the fit of a candidate and a hiring card from their
 // cosine similarity and their fields (paper, section 6.3).
 func Score(candidate, card Side, pay Pay, cosine float64) Scores {
+	return score(modelCalibration, candidate, card, pay, cosine)
+}
+
+func score(cal Calibration, candidate, card Side, pay Pay, cosine float64) Scores {
 	s := Scores{
-		Vector:    clamp((cosine - cosineFloor) / (cosineCeiling - cosineFloor)),
+		Vector:    clamp((cosine - cal.Floor) / (cal.Ceiling - cal.Floor)),
 		Seniority: seniorityScore(candidate.Seniority, card.Seniority),
 		Pay:       payScore(pay),
 	}
