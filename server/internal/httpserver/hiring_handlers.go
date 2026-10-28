@@ -125,6 +125,9 @@ func (s *server) updateHiringCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := hiring.Update(r.Context(), s.db, user.ID, r.PathValue("id"), f)
+	if err == nil {
+		s.queueCardVector(r, c)
+	}
 	s.writeCard(w, r, c, err)
 }
 
@@ -146,6 +149,9 @@ func (s *server) setHiringCardStatus(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, hiring.ErrStatus) || errors.As(err, &missing) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if err == nil {
+		s.queueCardVector(r, c)
 	}
 	s.writeCard(w, r, c, err)
 }

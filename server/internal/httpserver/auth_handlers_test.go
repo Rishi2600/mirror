@@ -27,11 +27,24 @@ func (m *fakeMailer) Send(ctx context.Context, to, subject, body string) error {
 	return nil
 }
 
-// fakeQueue records queued CV parse jobs instead of running them.
-type fakeQueue struct{ fileIDs []string }
+// fakeQueue records queued jobs instead of running them.
+type fakeQueue struct {
+	fileIDs  []string
+	embedded []string
+}
 
 func (q *fakeQueue) ParseCV(ctx context.Context, userID, fileID string) error {
 	q.fileIDs = append(q.fileIDs, fileID)
+	return nil
+}
+
+func (q *fakeQueue) EmbedCandidate(ctx context.Context, userID string) error {
+	q.embedded = append(q.embedded, "candidate:"+userID)
+	return nil
+}
+
+func (q *fakeQueue) EmbedHiringCard(ctx context.Context, cardID string) error {
+	q.embedded = append(q.embedded, "hiring_card:"+cardID)
 	return nil
 }
 
@@ -56,12 +69,13 @@ func newAuthClient(t *testing.T) *authClient {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(New(Options{
-		Logger:    slog.New(slog.DiscardHandler),
-		DB:        tx,
-		Mailer:    mailer,
-		Files:     files,
-		CVQueue:   queue,
-		JobParser: fakeJobParser{},
+		Logger:     slog.New(slog.DiscardHandler),
+		DB:         tx,
+		Mailer:     mailer,
+		Files:      files,
+		CVQueue:    queue,
+		JobParser:  fakeJobParser{},
+		EmbedQueue: queue,
 	}))
 	t.Cleanup(srv.Close)
 	return &authClient{t: t, base: srv.URL, http: &http.Client{Jar: newJar()}, mailer: mailer, queue: queue, tx: tx, files: files}

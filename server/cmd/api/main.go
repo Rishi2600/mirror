@@ -18,6 +18,7 @@ import (
 	"mirror/server/internal/ai"
 	"mirror/server/internal/config"
 	"mirror/server/internal/db"
+	"mirror/server/internal/embed"
 	"mirror/server/internal/httpserver"
 	"mirror/server/internal/jobs"
 	"mirror/server/internal/mail"
@@ -65,9 +66,22 @@ func run() error {
 		return err
 	}
 	parser := ai.NewGroq(cfg.GroqAPIKey, cfg.GroqModel, conn, logger)
-	queue, err := jobs.Start(context.Background(), cfg.DatabaseURL, conn, files, parser, logger)
+
+	// Timelines need the embedding server, but the rest of the API does
+	// not, so a missing server is only a warning; embed jobs retry.
+	embedder := embed.NewTEI(cfg.EmbedURL)
+	if err := embedder.Check(context.Background()); err != nil {
+		logger.Warn("embedding server is not ready; timelines will wait for it (try make db-up)", "error", err)
+	}
+
+	queue, err := jobs.Start(context.Background(), cfg.DatabaseURL, conn, files, parser, embedder, logger)
 	if err != nil {
 		return fmt.Errorf("starting background jobs: %w", err)
+	}
+	if queued, err := queue.Backfill(context.Background(), conn); err != nil {
+		logger.Error("queueing missing vectors", "error", err)
+	} else if queued > 0 {
+		logger.Info("queued missing vectors", "cards", queued)
 	}
 
 	srv := &http.Server{
@@ -82,6 +96,7 @@ func run() error {
 			Files:         files,
 			CVQueue:       queue,
 			JobParser:     parser,
+			EmbedQueue:    queue,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

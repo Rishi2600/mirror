@@ -28,6 +28,7 @@ type Options struct {
 	Files         *storage.Local
 	CVQueue       CVQueue
 	JobParser     hiring.JDParser
+	EmbedQueue    EmbedQueue
 }
 
 type server struct {
@@ -40,6 +41,7 @@ type server struct {
 	files         *storage.Local
 	cvQueue       CVQueue
 	jobParser     hiring.JDParser
+	embedQueue    EmbedQueue
 }
 
 // New returns the server's root handler.
@@ -54,6 +56,7 @@ func New(opts Options) http.Handler {
 		files:         opts.Files,
 		cvQueue:       opts.CVQueue,
 		jobParser:     opts.JobParser,
+		embedQueue:    opts.EmbedQueue,
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -82,6 +85,10 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("POST /v1/hiring-cards/{id}/image", s.uploadHiringCardImage)
 	mux.HandleFunc("GET /v1/hiring-cards/{id}/image", s.getHiringCardImage)
 	mux.HandleFunc("GET /v1/hiring-cards/{id}/preview", s.previewHiringCard)
+	mux.HandleFunc("GET /v1/hiring-cards/{id}/timeline", s.hiringCardTimeline)
+	mux.HandleFunc("GET /v1/timeline", s.candidateTimeline)
+	mux.HandleFunc("GET /v1/jobs/{id}/image", s.jobImage)
+	mux.HandleFunc("GET /v1/candidates/{id}/photo", s.candidatePhoto)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

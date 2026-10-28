@@ -119,6 +119,7 @@ func (s *server) finishCard(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.serverError(w, r, err)
 	default:
+		s.queueCandidateVector(r, p)
 		writeJSON(w, http.StatusOK, toProfileResponse(p))
 	}
 }

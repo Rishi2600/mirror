@@ -45,6 +45,8 @@ type Config struct {
 	GroqModel string
 	// FileKey is FILE_ENCRYPTION_KEY decoded: 32 bytes that encrypt uploads.
 	FileKey []byte
+	// EmbedURL is EMBED_URL, the local embedding server (compose.yaml).
+	EmbedURL string
 }
 
 // Defaults for unset variables.
@@ -54,6 +56,7 @@ const (
 	defaultDataDir = "data"
 	defaultSMTP    = 587
 	defaultModel   = "openai/gpt-oss-120b"
+	defaultEmbed   = "http://localhost:8090"
 )
 
 // Load reads the settings through getenv (os.Getenv in production) and
@@ -103,6 +106,8 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, errors.New("GROQ_API_KEY is required (get one at console.groq.com)"))
 	}
 	cfg.GroqModel = valueOr(getenv("GROQ_MODEL"), defaultModel)
+
+	cfg.EmbedURL = valueOr(getenv("EMBED_URL"), defaultEmbed)
 
 	cfg.FileKey, err = base64.StdEncoding.DecodeString(getenv("FILE_ENCRYPTION_KEY"))
 	if err != nil || len(cfg.FileKey) != 32 {
