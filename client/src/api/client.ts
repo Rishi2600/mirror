@@ -7,12 +7,15 @@ import type {
   HiringCard,
   HiringFields,
   HiringPreview,
+  ChatMessage,
   Match,
+  MessagesPage,
   Preferences,
   Profile,
   SwipeResult,
   TimelineCandidate,
   TimelineJob,
+  Unread,
   User,
 } from './types'
 
@@ -117,6 +120,24 @@ export function createApiClient(baseUrl: string) {
     listMatches: () => request<Match[]>('GET', '/v1/matches'),
     getMatch: (id: string) => request<Match>('GET', `/v1/matches/${id}`),
     unmatch: (id: string) => request<void>('DELETE', `/v1/matches/${id}`),
+
+    // before is the oldest message already loaded; empty for the newest page.
+    listMessages: (matchId: string, before = '') =>
+      request<MessagesPage>('GET', `/v1/matches/${matchId}/messages${before ? `?before=${before}` : ''}`),
+    // client_id makes a retried send save the message once.
+    sendMessage: (matchId: string, body: string, client_id: string, file?: Blob, fileName?: string) => {
+      if (!file) {
+        return request<ChatMessage>('POST', `/v1/matches/${matchId}/messages`, { body, client_id })
+      }
+      const form = new FormData()
+      form.append('body', body)
+      form.append('client_id', client_id)
+      form.append('file', file, fileName)
+      return request<ChatMessage>('POST', `/v1/matches/${matchId}/messages`, form)
+    },
+    markRead: (matchId: string) => request<void>('POST', `/v1/matches/${matchId}/read`),
+    deleteMessage: (id: string) => request<void>('DELETE', `/v1/messages/${id}`),
+    getUnread: () => request<Unread>('GET', '/v1/unread'),
     getHiringCardTimeline: (id: string) => request<TimelineCandidate[]>('GET', `/v1/hiring-cards/${id}/timeline`),
   }
 }

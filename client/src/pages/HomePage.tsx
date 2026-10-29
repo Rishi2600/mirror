@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { HiringCardList } from '../components/HiringCardList'
+import { MatchesLink } from '../components/MatchesLink'
 import { ServerStatus } from '../components/ServerStatus'
 import { api } from '../lib/api'
 import { meQueryKey, useMe } from '../lib/useMe'
@@ -45,16 +46,12 @@ export function HomePage() {
           <Link to="/profile" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
             Your card
           </Link>
-          <Link to="/matches" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
-            Your matches
-          </Link>
+          <MatchesLink />
         </div>
       )}
       {user?.role === 'employer' && (
         <>
-          <Link to="/matches" className="rounded border border-gray-300 px-3 py-2 text-center font-medium">
-            Your matches
-          </Link>
+          <MatchesLink />
           <HiringCardList />
         </>
       )}

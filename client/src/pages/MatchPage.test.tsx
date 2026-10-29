@@ -7,7 +7,13 @@ import { api } from '../lib/api'
 import { MatchPage } from './MatchPage'
 
 vi.mock('../lib/api', () => ({
-  api: { getMatch: vi.fn(), unmatch: vi.fn() },
+  api: {
+    getMatch: vi.fn(),
+    unmatch: vi.fn(),
+    getMe: vi.fn().mockResolvedValue({ id: 'me', email: 'me@example.com', role: 'employer', first_name: '' }),
+    listMessages: vi.fn().mockResolvedValue({ messages: [], has_more: false, other_read_at: null }),
+    markRead: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 afterEach(cleanup)
@@ -42,7 +48,7 @@ function renderPage() {
 describe('MatchPage', () => {
   it("shows the employer the candidate's contact details and CV link", async () => {
     vi.mocked(api.getMatch).mockResolvedValue({
-      id: 'm1', matched_at: '', hiring_card_title: 'Backend engineer', candidate: card,
+      id: 'm1', matched_at: '', new: false, unread: 0, hiring_card_title: 'Backend engineer', candidate: card,
       contact: { full_name: 'Jordan Example', email: 'jordan@example.com', phone: '+1 555 0100', cv, cv_url: '/v1/matches/m1/cv?exp=1&sig=x' },
     })
     renderPage()
@@ -50,15 +56,19 @@ describe('MatchPage', () => {
     expect(await screen.findByRole('heading', { name: 'Jordan Example' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'jordan@example.com' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Download CV' }).getAttribute('href')).toBe('/v1/matches/m1/cv?exp=1&sig=x')
-    expect(screen.queryByRole('button', { name: 'Unmatch' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Jordan', level: 1 })).toBeTruthy()
+    expect(await screen.findByText('Say hello to Jordan. You both said yes.')).toBeTruthy()
+    expect(api.markRead).toHaveBeenCalledWith('m1')
+    expect(screen.getByRole('button', { name: 'Unmatch' })).toBeTruthy()
   })
 
   it('lets the candidate unmatch after confirming', async () => {
-    vi.mocked(api.getMatch).mockResolvedValue({ id: 'm1', matched_at: '', job })
+    vi.mocked(api.getMatch).mockResolvedValue({ id: 'm1', matched_at: '', new: false, unread: 0, job })
     vi.mocked(api.unmatch).mockResolvedValue(undefined)
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Backend engineer (Go)' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Sam', level: 1 })).toBeTruthy()
     expect(screen.queryByTestId('contact')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Unmatch' }))

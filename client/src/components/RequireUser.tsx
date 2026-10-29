@@ -1,5 +1,7 @@
 import { Navigate, Outlet } from 'react-router'
 import { useMe } from '../lib/useMe'
+import { LiveAlerts } from './LiveAlerts'
+import { LiveProvider } from './LiveProvider'
 
 type Props = {
   // true: the page needs a role (users without one go to /choose-role).
@@ -30,5 +32,14 @@ export function RequireUser({ needsRole }: Props) {
   if (!needsRole && me.data.role) {
     return <Navigate to="/" replace />
   }
-  return <Outlet />
+  if (!needsRole) {
+    return <Outlet />
+  }
+  // Signed in with a role: keep the live connection open on every page.
+  return (
+    <LiveProvider>
+      <LiveAlerts />
+      <Outlet />
+    </LiveProvider>
+  )
 }

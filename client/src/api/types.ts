@@ -206,4 +206,50 @@ export interface Match {
   hiring_card_title?: string
   candidate?: Card
   contact?: Contact
+  // The inbox fields, on the list only. New means not opened yet.
+  new: boolean
+  unread: number
+  last_message?: ChatMessage
+}
+
+// Matches MessageResponse in server/internal/httpserver/chat_handlers.go.
+// A deleted message has no body or file.
+export interface ChatMessage {
+  id: string
+  match_id: string
+  sender_id: string
+  client_id: string
+  body: string
+  file?: ChatFile
+  created_at: string
+  deleted: boolean
+}
+
+export interface ChatFile {
+  name: string
+  content_type: string
+  size: number
+  is_image: boolean
+  url: string
+}
+
+// One page of a chat, oldest first.
+export interface MessagesPage {
+  messages: ChatMessage[]
+  has_more: boolean
+  other_read_at: string | null
+}
+
+export interface Unread {
+  new_matches: number
+  messages: number
+}
+
+// Matches live.Event in server/internal/live/live.go.
+export interface LiveEvent {
+  type: 'match' | 'unmatched' | 'message' | 'message_deleted' | 'read' | 'typing'
+  match_id: string
+  message?: ChatMessage
+  message_id?: string
+  read_at?: string
 }

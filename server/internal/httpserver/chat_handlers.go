@@ -240,12 +240,10 @@ func (s *server) messageMatch(w http.ResponseWriter, r *http.Request) (users.Use
 	return users.User{}, swipes.Match{}, false
 }
 
-// notifyMatch tells both sides about a new match. Only the other side is
-// notified: the swiper sees it in the swipe's answer.
+// notifyMatch tells the other side about a new match. The swiper sees it
+// in the swipe's answer.
 func (s *server) notifyMatch(r *http.Request, swiper users.User, m swipes.Match) {
-	e := live.Event{Type: live.TypeMatch, MatchID: m.ID}
-	s.hub.Send(swiper.ID, e)
-	s.notify(r, m.OtherUserID(swiper.ID), "match", m.ID, e)
+	s.notify(r, m.OtherUserID(swiper.ID), "match", m.ID, live.Event{Type: live.TypeMatch, MatchID: m.ID})
 }
 
 // notify pushes an in-app notification and logs it.

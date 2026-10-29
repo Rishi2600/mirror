@@ -3,20 +3,30 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import type { Contact } from '../api/types'
 import { CandidateCard } from '../components/CandidateCard'
+import { Chat } from '../components/chat/Chat'
 import { ErrorMessage } from '../components/form'
 import { JobCard } from '../components/JobCard'
 import { api } from '../lib/api'
+import { useMe } from '../lib/useMe'
 
-// MatchPage shows one match. The employer sees the candidate's contact
-// details and CV; the candidate sees the job and can unmatch.
+// MatchPage is one match: the chat, and below it the other side's card.
+// The employer also sees the candidate's contact details and CV. Either
+// side can end the match.
 export function MatchPage() {
   const { id = '' } = useParams()
+  const me = useMe()
   const match = useQuery({ queryKey: ['match', id], queryFn: () => api.getMatch(id), retry: false })
+  const m = match.isError ? undefined : match.data
+  const otherName = m?.job ? m.job.employer_first_name || 'the employer' : (m?.candidate?.name ?? '')
+  const title = m?.job ? `${m.job.title}${m.job.company_name ? `, ${m.job.company_name}` : ''}` : (m?.hiring_card_title ?? '')
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold">Match</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{m ? otherName : 'Match'}</h1>
+          {m && <p className="text-sm text-gray-600">{title}</p>}
+        </div>
         <Link to="/matches" className="text-sm text-blue-700 underline">
           All matches
         </Link>
@@ -24,15 +34,11 @@ export function MatchPage() {
 
       {match.isPending && <p className="text-gray-600">Loading the match...</p>}
       {match.isError && <ErrorMessage message="This match does not exist or has ended." />}
-      {match.data?.contact && <ContactDetails contact={match.data.contact} />}
-      {match.data?.candidate && <CandidateCard card={match.data.candidate} />}
-      {match.data?.job && (
-        <>
-          <JobCard view={match.data.job} />
-          <p className="text-gray-600">You and {match.data.job.employer_first_name || 'the employer'} both said yes. Chat opens here soon.</p>
-          <Unmatch id={id} />
-        </>
-      )}
+      {m && me.data && <Chat matchId={id} myId={me.data.id} otherName={otherName} />}
+      {m?.contact && <ContactDetails contact={m.contact} />}
+      {m?.candidate && <CandidateCard card={m.candidate} />}
+      {m?.job && <JobCard view={m.job} />}
+      {m && <Unmatch id={id} employer={!!m.candidate} />}
     </main>
   )
 }
@@ -55,7 +61,7 @@ function ContactDetails({ contact }: { contact: Contact }) {
 }
 
 // Unmatch asks once more before ending the match.
-function Unmatch({ id }: { id: string }) {
+function Unmatch({ id, employer }: { id: string; employer: boolean }) {
   const [confirming, setConfirming] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -76,7 +82,12 @@ function Unmatch({ id }: { id: string }) {
   }
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-red-300 bg-red-50 p-4">
-      <p>The employer will no longer see your contact details or CV. This cannot be undone.</p>
+      <p>
+        {employer
+          ? 'You will lose the contact details, the CV and the chat.'
+          : 'The employer will no longer see your contact details or CV.'}{' '}
+        The chat closes for both of you. This cannot be undone.
+      </p>
       <div className="flex gap-3">
         <button
           type="button"
