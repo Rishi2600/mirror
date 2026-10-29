@@ -38,12 +38,13 @@ export function Chat({ matchId, myId, otherName }: Props) {
   const list = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const heightBeforeOlder = useRef(0)
-  useLayoutEffect(() => {
+  function keepAtBottom() {
     const el = list.current
     if (el && atBottom.current) {
       el.scrollTop = el.scrollHeight
     }
-  }, [lastId, pending.length, typing])
+  }
+  useLayoutEffect(keepAtBottom, [lastId, pending.length, typing])
   useLayoutEffect(() => {
     const el = list.current
     if (el && heightBeforeOlder.current) {
@@ -156,7 +157,7 @@ export function Chat({ matchId, myId, otherName }: Props) {
             {(i === 0 || dayOf(messages[i - 1].created_at) !== dayOf(m.created_at)) && (
               <p className="self-center text-xs text-gray-500">{dayOf(m.created_at)}</p>
             )}
-            <MessageBubble message={m} mine={m.sender_id === myId} seen={m.id === seenId} onDelete={() => remove(m.id)} />
+            <MessageBubble message={m} mine={m.sender_id === myId} seen={m.id === seenId} onDelete={() => remove(m.id)} onImageLoad={keepAtBottom} />
           </Fragment>
         ))}
         {pending.map((p) => (

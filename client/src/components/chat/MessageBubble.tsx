@@ -7,11 +7,13 @@ type Props = {
   mine: boolean
   seen: boolean
   onDelete: () => void
+  // Called when an image has loaded and made the message taller.
+  onImageLoad: () => void
 }
 
 // MessageBubble is one message: text, an image, or a document card. Your
 // own messages can be deleted, after a confirm.
-export function MessageBubble({ message, mine, seen, onDelete }: Props) {
+export function MessageBubble({ message, mine, seen, onDelete, onImageLoad }: Props) {
   const [confirming, setConfirming] = useState(false)
   const side = mine ? 'items-end' : 'items-start'
   const colors = mine ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'
@@ -26,7 +28,7 @@ export function MessageBubble({ message, mine, seen, onDelete }: Props) {
   return (
     <div data-testid="message" className={`flex flex-col gap-1 ${side}`}>
       <div className={`flex max-w-[80%] flex-col gap-2 rounded-2xl px-3 py-2 ${colors}`}>
-        {message.file && <Attachment file={message.file} mine={mine} />}
+        {message.file && <Attachment file={message.file} mine={mine} onImageLoad={onImageLoad} />}
         {message.body && <p className="break-words whitespace-pre-wrap">{message.body}</p>}
       </div>
       <div className="flex gap-2 text-xs text-gray-500">
@@ -53,11 +55,11 @@ export function MessageBubble({ message, mine, seen, onDelete }: Props) {
   )
 }
 
-function Attachment({ file, mine }: { file: ChatFile; mine: boolean }) {
+function Attachment({ file, mine, onImageLoad }: { file: ChatFile; mine: boolean; onImageLoad: () => void }) {
   if (file.is_image) {
     return (
       <a href={file.url} target="_blank" rel="noreferrer">
-        <img src={file.url} alt={file.name} loading="lazy" className="max-h-64 rounded-lg" />
+        <img src={file.url} alt={file.name} loading="lazy" onLoad={onImageLoad} className="max-h-64 rounded-lg" />
       </a>
     )
   }

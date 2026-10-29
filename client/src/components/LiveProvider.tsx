@@ -35,7 +35,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         listeners.current.forEach((fn) => fn(e))
       }
       ws.onclose = () => {
-        socket.current = null
+        // An old socket can close after its replacement opened.
+        if (socket.current === ws) {
+          socket.current = null
+        }
         if (stopped) {
           return
         }
