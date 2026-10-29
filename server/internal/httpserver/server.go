@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"mirror/server/internal/hiring"
+	"mirror/server/internal/live"
 	"mirror/server/internal/mail"
 	"mirror/server/internal/storage"
 )
@@ -31,6 +32,8 @@ type Options struct {
 	EmbedQueue    EmbedQueue
 	// SigningKey signs download links (CVs).
 	SigningKey []byte
+	// Hub pushes live events; New makes one when it is nil.
+	Hub *live.Hub
 }
 
 type server struct {
@@ -45,6 +48,7 @@ type server struct {
 	jobParser     hiring.JDParser
 	embedQueue    EmbedQueue
 	signingKey    []byte
+	hub           *live.Hub
 }
 
 // New returns the server's root handler.
@@ -61,9 +65,13 @@ func New(opts Options) http.Handler {
 		jobParser:     opts.JobParser,
 		embedQueue:    opts.EmbedQueue,
 		signingKey:    opts.SigningKey,
+		hub:           opts.Hub,
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.hub == nil {
+		s.hub = live.NewHub()
 	}
 
 	mux := http.NewServeMux()
@@ -98,6 +106,13 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /v1/matches/{id}", s.getMatch)
 	mux.HandleFunc("DELETE /v1/matches/{id}", s.unmatch)
 	mux.HandleFunc("GET /v1/matches/{id}/cv", s.downloadCV)
+	mux.HandleFunc("GET /v1/matches/{id}/messages", s.listMessages)
+	mux.HandleFunc("POST /v1/matches/{id}/messages", s.sendMessage)
+	mux.HandleFunc("POST /v1/matches/{id}/read", s.markRead)
+	mux.HandleFunc("DELETE /v1/messages/{id}", s.deleteMessage)
+	mux.HandleFunc("GET /v1/messages/{id}/file", s.messageFile)
+	mux.HandleFunc("GET /v1/unread", s.unread)
+	mux.HandleFunc("GET /v1/ws", s.liveSocket)
 	// Unknown API paths get a JSON 404, never the web app.
 	mux.HandleFunc("/v1/", s.notFound)
 	if opts.WebDistDir != "" {

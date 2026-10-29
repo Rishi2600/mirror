@@ -22,14 +22,20 @@ var ErrNotImage = errors.New("the photo must be a JPEG, PNG or WebP image")
 // Prepare returns the photo as a metadata-free JPEG, at most MaxSide pixels
 // on its longest side.
 func Prepare(data []byte) ([]byte, error) {
+	return Resize(data, MaxSide)
+}
+
+// Resize returns the image as a metadata-free JPEG, at most maxSide pixels
+// on its longest side.
+func Resize(data []byte, maxSide int) ([]byte, error) {
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, ErrNotImage
 	}
 
 	w, h := src.Bounds().Dx(), src.Bounds().Dy()
-	if longest := max(w, h); longest > MaxSide {
-		w, h = w*MaxSide/longest, h*MaxSide/longest
+	if longest := max(w, h); longest > maxSide {
+		w, h = w*maxSide/longest, h*maxSide/longest
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, max(w, 1), max(h, 1)))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)

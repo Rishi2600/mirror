@@ -3,6 +3,7 @@ module mirror/server
 go 1.27.3
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/pressly/goose/v3 v3.29.0
@@ -10,6 +11,7 @@ require (
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.49.0
 	github.com/riverqueue/river/rivertype v0.49.0
 	github.com/wneessen/go-mail v0.8.1
+	golang.org/x/image v0.47.0
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2
 )
@@ -30,7 +32,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )

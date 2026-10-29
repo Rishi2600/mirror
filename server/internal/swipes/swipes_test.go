@@ -152,14 +152,24 @@ func TestMatchesAndUnmatch(t *testing.T) {
 		t.Errorf("a stranger's Get: error = %v, want ErrMatchNotFound", err)
 	}
 
-	if err := Unmatch(p.ctx, p.db, p.employer, res.Match.ID); !errors.Is(err, ErrMatchNotFound) {
-		t.Errorf("employer unmatching: error = %v, want ErrMatchNotFound (only candidates unmatch)", err)
+	if _, err := Unmatch(p.ctx, p.db, stranger, res.Match.ID); !errors.Is(err, ErrMatchNotFound) {
+		t.Errorf("a stranger unmatching: error = %v, want ErrMatchNotFound", err)
 	}
-	if err := Unmatch(p.ctx, p.db, p.candidate, res.Match.ID); err != nil {
-		t.Fatalf("Unmatch: %v", err)
+	if _, err := Unmatch(p.ctx, p.db, p.employer, res.Match.ID); err != nil {
+		t.Fatalf("employer Unmatch: %v", err)
 	}
-	if _, err := Get(p.ctx, p.db, p.employer, res.Match.ID); !errors.Is(err, ErrMatchNotFound) {
-		t.Errorf("employer after unmatch: error = %v, want ErrMatchNotFound", err)
+	for _, u := range []users.User{p.candidate, p.employer} {
+		if _, err := Get(p.ctx, p.db, u, res.Match.ID); !errors.Is(err, ErrMatchNotFound) {
+			t.Errorf("%s after unmatch: error = %v, want ErrMatchNotFound", u.Role, err)
+		}
+	}
+	if _, err := Unmatch(p.ctx, p.db, p.candidate, res.Match.ID); !errors.Is(err, ErrMatchNotFound) {
+		t.Errorf("unmatching twice: error = %v, want ErrMatchNotFound", err)
+	}
+	var by string
+	p.db.Raw("SELECT unmatched_by FROM matches WHERE id = ?", res.Match.ID).Scan(&by)
+	if by != p.employer.ID {
+		t.Errorf("unmatched_by = %q, want the employer", by)
 	}
 }
 

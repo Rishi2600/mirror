@@ -3,10 +3,13 @@ package httpserver
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"time"
 
+	"mirror/server/internal/chat"
 	"mirror/server/internal/cvtext"
 	"mirror/server/internal/hiring"
+	"mirror/server/internal/live"
 	"mirror/server/internal/profiles"
 	"mirror/server/internal/signing"
 	"mirror/server/internal/swipes"
@@ -33,6 +36,10 @@ type MatchResponse struct {
 	Candidate       *profiles.Card `json:"candidate,omitempty"`
 	// Contact is revealed to the employer only, on the match page.
 	Contact *Contact `json:"contact,omitempty"`
+	// The inbox fields, on the list only. New means not opened yet.
+	New         bool             `json:"new"`
+	Unread      int              `json:"unread"`
+	LastMessage *MessageResponse `json:"last_message,omitempty"`
 }
 
 // Contact is what a match reveals to the employer.
@@ -80,12 +87,13 @@ func (s *server) createSwipe(w http.ResponseWriter, r *http.Request) {
 		out := SwipeResponse{Matched: res.Match != nil}
 		if res.Match != nil {
 			out.MatchID = res.Match.ID
+			s.notifyMatch(r, user, *res.Match)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
 }
 
-// GET /v1/matches: the user's live matches, newest first.
+// GET /v1/matches: the user's live matches, the latest activity first.
 func (s *server) listMatches(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.currentUser(w, r)
 	if !ok {
@@ -96,15 +104,36 @@ func (s *server) listMatches(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	ids := make([]string, len(list))
+	for i, m := range list {
+		ids[i] = m.ID
+	}
+	summaries, err := chat.Summaries(r.Context(), s.db, user.ID, ids)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+
 	out := []MatchResponse{}
+	lastActive := map[string]time.Time{}
 	for _, m := range list {
 		resp, err := s.matchResponse(r, user, m, false)
 		if err != nil {
 			s.serverError(w, r, err)
 			return
 		}
+		mine, _ := m.ReadAt(user.ID)
+		sum := summaries[m.ID]
+		resp.New, resp.Unread = mine == nil, sum.Unread
+		lastActive[m.ID] = m.MatchedAt
+		if sum.Last != nil {
+			last := toMessageResponse(*sum.Last)
+			resp.LastMessage = &last
+			lastActive[m.ID] = sum.Last.CreatedAt
+		}
 		out = append(out, resp)
 	}
+	sort.SliceStable(out, func(i, j int) bool { return lastActive[out[i].ID].After(lastActive[out[j].ID]) })
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -123,14 +152,14 @@ func (s *server) getMatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// DELETE /v1/matches/{id}: the candidate ends the match; the employer loses
-// the contact details and CV.
+// DELETE /v1/matches/{id}: either side ends the match. The employer loses
+// the contact details and CV, and the chat closes for both.
 func (s *server) unmatch(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCandidate(w, r)
+	user, ok := s.currentUser(w, r)
 	if !ok {
 		return
 	}
-	err := swipes.Unmatch(r.Context(), s.db, user, r.PathValue("id"))
+	m, err := swipes.Unmatch(r.Context(), s.db, user, r.PathValue("id"))
 	if errors.Is(err, swipes.ErrMatchNotFound) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -139,6 +168,9 @@ func (s *server) unmatch(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, err)
 		return
 	}
+	e := live.Event{Type: live.TypeUnmatched, MatchID: m.ID}
+	s.hub.Send(m.CandidateUserID, e)
+	s.hub.Send(m.EmployerUserID, e)
 	w.WriteHeader(http.StatusNoContent)
 }
 

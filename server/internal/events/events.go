@@ -30,3 +30,22 @@ func (AICall) TableName() string { return "events.ai_calls" }
 func LogAICall(ctx context.Context, db *gorm.DB, call AICall) error {
 	return db.WithContext(ctx).Create(&call).Error
 }
+
+// Notification is one in-app alert sent to a user.
+type Notification struct {
+	ID        int64 // set by the database
+	UserID    string
+	Channel   string
+	Kind      string
+	MatchID   string
+	Delivered bool
+	CreatedAt time.Time
+}
+
+func (Notification) TableName() string { return "events.notifications" }
+
+// LogNotification records a notification. Callers log a failure here and
+// carry on.
+func LogNotification(ctx context.Context, db *gorm.DB, n Notification) error {
+	return db.WithContext(ctx).Create(&n).Error
+}

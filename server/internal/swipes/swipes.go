@@ -56,6 +56,27 @@ type Match struct {
 	State           string `gorm:"default:matched"`
 	MatchedAt       time.Time
 	UnmatchedAt     *time.Time
+	UnmatchedBy     *string
+	// When each side last read the chat; nil until they open the match.
+	CandidateReadAt *time.Time
+	EmployerReadAt  *time.Time
+}
+
+// OtherUserID returns the other person in the match.
+func (m Match) OtherUserID(userID string) string {
+	if userID == m.CandidateUserID {
+		return m.EmployerUserID
+	}
+	return m.CandidateUserID
+}
+
+// ReadAt returns when this user last read the chat, and when the other
+// person did.
+func (m Match) ReadAt(userID string) (mine, theirs *time.Time) {
+	if userID == m.CandidateUserID {
+		return m.CandidateReadAt, m.EmployerReadAt
+	}
+	return m.EmployerReadAt, m.CandidateReadAt
 }
 
 type auditEvent struct {
@@ -197,7 +218,7 @@ func Matches(ctx context.Context, db *gorm.DB, user users.User) ([]Match, error)
 }
 
 // Get returns one of the user's live matches. Anyone else's match, or one
-// the candidate ended, is not found.
+// that was ended, is not found.
 func Get(ctx context.Context, db *gorm.DB, user users.User, id string) (Match, error) {
 	var m Match
 	err := db.WithContext(ctx).
@@ -209,21 +230,30 @@ func Get(ctx context.Context, db *gorm.DB, user users.User, id string) (Match, e
 	return m, err
 }
 
-// Unmatch ends a match for the candidate. The employer loses the contact
-// details and CV at once.
-func Unmatch(ctx context.Context, db *gorm.DB, candidate users.User, id string) error {
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&Match{}).
-			Where("id::text = ? AND candidate_user_id = ? AND state = ?", id, candidate.ID, StateMatched).
-			Updates(map[string]any{"state": StateUnmatched, "unmatched_at": time.Now()})
+// Unmatch ends a match; either side may. The employer loses the contact
+// details and CV at once, and the chat closes for both.
+func Unmatch(ctx context.Context, db *gorm.DB, user users.User, id string) (Match, error) {
+	var m Match
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("id::text = ? AND state = ? AND (candidate_user_id = ? OR employer_user_id = ?)", id, StateMatched, user.ID, user.ID).
+			First(&m).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrMatchNotFound
+		}
+		if err != nil {
+			return err
+		}
+		res := tx.Model(&Match{}).Where("id = ? AND state = ?", m.ID, StateMatched).
+			Updates(map[string]any{"state": StateUnmatched, "unmatched_at": time.Now(), "unmatched_by": user.ID})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
-			return ErrMatchNotFound
+			return ErrMatchNotFound // ended by the other side a moment ago
 		}
-		return tx.Create(&auditEvent{ActorUserID: candidate.ID, Action: "unmatch", MatchID: id}).Error
+		return tx.Create(&auditEvent{ActorUserID: user.ID, Action: "unmatch", MatchID: m.ID}).Error
 	})
+	return m, err
 }
 
 // Audit records that a user saw or downloaded something from a match.
