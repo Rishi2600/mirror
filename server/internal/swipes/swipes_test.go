@@ -13,6 +13,7 @@ import (
 	"mirror/server/internal/dbtest"
 	"mirror/server/internal/hiring"
 	"mirror/server/internal/profiles"
+	"mirror/server/internal/selectivity"
 	"mirror/server/internal/users"
 )
 
@@ -217,6 +218,119 @@ func TestSimultaneousLikesMakeExactlyOneMatch(t *testing.T) {
 		}
 		if matches != 1 || made != 1 {
 			t.Fatalf("round %d: %d matches stored, %d reported; want exactly 1 of each", i, matches, made)
+		}
+	}
+}
+
+// fillBudget stores likes on new cards, as if sent earlier today.
+func (p pair) fillBudget(t *testing.T, likes int) {
+	t.Helper()
+	for i := range likes {
+		card := hiring.Card{EmployerUserID: p.employer.ID, Status: hiring.StatusLive, Title: fmt.Sprint("Filled ", i), Skills: []string{}, PayCurrency: "USD"}
+		if err := p.db.Create(&card).Error; err != nil {
+			t.Fatal(err)
+		}
+		err := p.db.Exec(`INSERT INTO swipes (side, actor_user_id, hiring_card_id, candidate_user_id, direction, idempotency_key, dwell_ms)
+			VALUES ('candidate', ?, ?, ?, 'right', gen_random_uuid()::text, 5000)`, p.candidate.ID, card.ID, p.candidate.ID).Error
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDwellIsStoredOnCandidateSwipes(t *testing.T) {
+	p := newPair(t, dbtest.Tx(t), "dwell")
+	cases := []struct{ sent, want int }{{-5, 0}, {4200, 4200}}
+	for i, c := range cases {
+		card := hiring.Card{EmployerUserID: p.employer.ID, Status: hiring.StatusLive, Title: "Go", Skills: []string{}, PayCurrency: "USD"}
+		p.db.Create(&card)
+		res, err := Record(p.ctx, p.db, p.candidate, card.ID, p.candidate.ID, Left, fmt.Sprint("d", i), c.sent)
+		if err != nil || res.Swipe.DwellMS == nil || *res.Swipe.DwellMS != c.want {
+			t.Errorf("dwell %d stored as %v (%v), want %d", c.sent, res.Swipe.DwellMS, err, c.want)
+		}
+	}
+	res, _ := Record(p.ctx, p.db, p.candidate, p.card.ID, p.candidate.ID, Right, "long", 3*60*60*1000)
+	if *res.Swipe.DwellMS != maxDwellMS {
+		t.Errorf("3 hours on a card stored as %d ms, want the cap", *res.Swipe.DwellMS)
+	}
+	res, _ = p.swipe(t, p.employer, Right, "e1")
+	if res.Swipe.DwellMS != nil {
+		t.Error("an employer swipe stored a dwell time")
+	}
+}
+
+func TestARefusedLikeSavesNothingButARetryStillAnswers(t *testing.T) {
+	p := newPair(t, dbtest.Tx(t), "refused")
+	if _, err := p.swipe(t, p.candidate, Right, "first"); err != nil {
+		t.Fatal(err)
+	}
+	p.fillBudget(t, 14)
+
+	// A network retry of a like that already went through is not a new like.
+	if _, err := p.swipe(t, p.candidate, Right, "first"); err != nil {
+		t.Errorf("retrying the saved like: %v", err)
+	}
+
+	other := hiring.Card{EmployerUserID: p.employer.ID, Status: hiring.StatusLive, Title: "Go", Skills: []string{}, PayCurrency: "USD"}
+	p.db.Create(&other)
+	var limited *selectivity.Limited
+	_, err := Record(p.ctx, p.db, p.candidate, other.ID, p.candidate.ID, Right, "over", 5000)
+	if !errors.As(err, &limited) {
+		t.Fatalf("the 16th like: error = %v, want *selectivity.Limited", err)
+	}
+	var saved int64
+	p.db.Model(&Swipe{}).Where("hiring_card_id = ?", other.ID).Count(&saved)
+	if saved != 0 {
+		t.Error("the refused like was saved")
+	}
+	if _, err := Record(p.ctx, p.db, p.candidate, other.ID, p.candidate.ID, Left, "skip", 5000); err != nil {
+		t.Errorf("skipping with no likes left: %v", err)
+	}
+}
+
+// Several tabs take the last like at the same moment: exactly one gets it.
+// Uses real transactions, so it removes its own rows.
+func TestTheLastLikeGoesToOneTab(t *testing.T) {
+	db := dbtest.Conn(t)
+	cleanup := func() { removeUsers(db, "swipes._.budget.%@example.com") }
+	cleanup()
+	t.Cleanup(cleanup)
+
+	for round := range 5 {
+		p := newPair(t, db, fmt.Sprintf("budget.%d", round))
+		p.fillBudget(t, 14)
+		const tabs = 6
+		cards := make([]string, tabs)
+		for i := range cards {
+			card := hiring.Card{EmployerUserID: p.employer.ID, Status: hiring.StatusLive, Title: "Go", Skills: []string{}, PayCurrency: "USD"}
+			if err := db.Create(&card).Error; err != nil {
+				t.Fatal(err)
+			}
+			cards[i] = card.ID
+		}
+		var wg sync.WaitGroup
+		errs := make([]error, tabs)
+		for i := range cards {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, errs[i] = Record(p.ctx, db, p.candidate, cards[i], p.candidate.ID, Right, fmt.Sprint("tab-", i), 5000)
+			}()
+		}
+		wg.Wait()
+
+		accepted := 0
+		for _, err := range errs {
+			var limited *selectivity.Limited
+			switch {
+			case err == nil:
+				accepted++
+			case !errors.As(err, &limited):
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
+		if accepted != 1 {
+			t.Errorf("round %d: %d tabs got the last like, want 1", round, accepted)
 		}
 	}
 }

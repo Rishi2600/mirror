@@ -13,6 +13,18 @@ import (
 func (c *authClient) swipe(body map[string]string, key string, out any) *http.Response {
 	c.t.Helper()
 	data, _ := json.Marshal(body)
+	return c.postSwipe(data, key, out)
+}
+
+// swipeBody is swipe for a body that is not all strings.
+func (c *authClient) swipeBody(body map[string]any, key string) *http.Response {
+	c.t.Helper()
+	data, _ := json.Marshal(body)
+	return c.postSwipe(data, key, nil)
+}
+
+func (c *authClient) postSwipe(data []byte, key string, out any) *http.Response {
+	c.t.Helper()
 	req, _ := http.NewRequest("POST", c.base+"/v1/swipes", bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
 	if key != "" {

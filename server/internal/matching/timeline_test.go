@@ -2,6 +2,7 @@ package matching
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -306,5 +307,140 @@ func TestLikersComeFirstOnAHiringCardTimeline(t *testing.T) {
 	}
 	if !matches[0].Liked {
 		t.Error("the first candidate is not marked as having liked the card")
+	}
+}
+
+// selectivity stores a candidate's score, and when it went low.
+func (w world) selectivity(t *testing.T, userID string, score float64, lowSince *time.Time) {
+	t.Helper()
+	err := w.tx.Exec(`INSERT INTO selectivity_scores (user_id, score, right_rate, mean_fit, median_dwell_ms, reply_rate, swipes_7d, low_since)
+		VALUES (?, ?, 0, 0, 0, 0, 0, ?)`, userID, score, lowSince).Error
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The core of chunk 11: a better-fitting spam-swiper falls below a careful
+// candidate, and the fit shown on the card does not change.
+func TestASpamSwiperDropsBelowACarefulCandidate(t *testing.T) {
+	w := newWorld(t)
+	card := w.card(t, "Go backend engineer", func(c *hiring.Card) { c.Skills = []string{"Go", "PostgreSQL"} })
+	spammer := w.candidate(t, "spammer@example.com", nil)
+	careful := w.candidate(t, "careful@example.com", func(p *profiles.Profile) { p.CV.Skills = []string{"Go"} })
+	w.swiped(t, "candidate", spammer.UserID, card.ID, spammer.UserID, "right")
+	w.swiped(t, "candidate", careful.UserID, card.ID, careful.UserID, "right")
+
+	positions := func() (map[string]int, map[string]float64) {
+		matches, err := HiringCardTimeline(w.ctx, w.tx, card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		place, score := map[string]int{}, map[string]float64{}
+		for i, m := range matches {
+			place[m.Profile.UserID], score[m.Profile.UserID] = i, m.Score
+		}
+		return place, score
+	}
+
+	before, fitBefore := positions()
+	if before[spammer.UserID] > before[careful.UserID] {
+		t.Fatal("with no scores yet, the better fit should be first")
+	}
+
+	w.selectivity(t, spammer.UserID, 0.30, nil)
+	w.selectivity(t, careful.UserID, 0.92, nil)
+	after, fitAfter := positions()
+	if after[careful.UserID] > after[spammer.UserID] {
+		t.Errorf("spammer at %d, careful at %d; want the careful candidate first", after[spammer.UserID], after[careful.UserID])
+	}
+	if fitAfter[spammer.UserID] != fitBefore[spammer.UserID] {
+		t.Errorf("the fit shown changed from %f to %f", fitBefore[spammer.UserID], fitAfter[spammer.UserID])
+	}
+}
+
+func TestALowScoreTakesLikesOutOfTheTopGroup(t *testing.T) {
+	w := newWorld(t)
+	card := w.card(t, "Go backend engineer", nil)
+	lowForDays := w.candidate(t, "low.days@example.com", nil)
+	lowToday := w.candidate(t, "low.today@example.com", nil)
+	for _, p := range []profiles.Profile{lowForDays, lowToday} {
+		w.swiped(t, "candidate", p.UserID, card.ID, p.UserID, "right")
+	}
+	long, recent := time.Now().Add(-4*24*time.Hour), time.Now().Add(-24*time.Hour)
+	w.selectivity(t, lowForDays.UserID, 0.3, &long)
+	w.selectivity(t, lowToday.UserID, 0.3, &recent)
+
+	matches, err := HiringCardTimeline(w.ctx, w.tx, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	liked := map[string]bool{}
+	for _, m := range matches {
+		liked[m.Profile.UserID] = m.Liked
+	}
+	got, onTimeline := liked[lowForDays.UserID]
+	if !onTimeline || got {
+		t.Errorf("low for 4 days: on the timeline %v, liked %v; want on it, without the like", onTimeline, got)
+	}
+	if !liked[lowToday.UserID] {
+		t.Error("low for 1 day: the like should still count")
+	}
+}
+
+func TestAGhostingEmployerRanksLowerForCandidates(t *testing.T) {
+	w := newWorld(t)
+	me := w.candidate(t, "seeker@example.com", nil)
+	ghost := w.card(t, "Go backend engineer", nil)
+	other, _ := users.Create(w.ctx, w.tx, "other.employer@example.com", users.RoleEmployer)
+	replier := w.card(t, "Go engineer", func(c *hiring.Card) {
+		c.EmployerUserID = other.ID
+		c.Skills = []string{"Go", "PostgreSQL", "Kafka"} // a weaker fit: one skill missing
+	})
+
+	place := func() (map[string]int, map[string]float64) {
+		matches, err := CandidateTimeline(w.ctx, w.tx, me)
+		if err != nil {
+			t.Fatal(err)
+		}
+		at, score := map[string]int{}, map[string]float64{}
+		for i, m := range matches {
+			at[m.Card.ID], score[m.Card.ID] = i, m.Score
+		}
+		return at, score
+	}
+	before, fitBefore := place()
+	if before[ghost.ID] > before[replier.ID] {
+		t.Fatal("before ghosting, the better fit should be first")
+	}
+
+	// Three matches a few days old that w.employer never wrote on.
+	for i := range 3 {
+		c, _ := users.Create(w.ctx, w.tx, fmt.Sprintf("ignored.%d@example.com", i), users.RoleCandidate)
+		err := w.tx.Exec(`INSERT INTO matches (hiring_card_id, candidate_user_id, employer_user_id, matched_at) VALUES (?, ?, ?, ?)`,
+			ghost.ID, c.ID, w.employer, time.Now().Add(-5*24*time.Hour)).Error
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, fitAfter := place()
+	if after[ghost.ID] < after[replier.ID] {
+		t.Error("the ghosting employer's card should now rank lower")
+	}
+	if fitAfter[ghost.ID] != fitBefore[ghost.ID] {
+		t.Error("the fit shown on the card changed")
+	}
+}
+
+func TestFitOfOnePair(t *testing.T) {
+	w := newWorld(t)
+	card := w.card(t, "Go backend engineer", nil)
+	me := w.candidate(t, "fit@example.com", nil)
+	fit, err := Fit(w.ctx, w.tx, me, card)
+	if err != nil || fit == nil || *fit <= 0 {
+		t.Fatalf("fit = %v, %v", fit, err)
+	}
+	unembedded := hiring.Card{ID: "00000000-0000-0000-0000-000000000000"}
+	if fit, err := Fit(w.ctx, w.tx, me, unembedded); fit != nil || err != nil {
+		t.Errorf("a card with no vector: fit = %v, %v; want nil", fit, err)
 	}
 }
