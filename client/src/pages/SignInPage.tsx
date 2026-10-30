@@ -45,7 +45,8 @@ export function SignInPage() {
   function checkCode(e: FormEvent) {
     e.preventDefault()
     run(async () => {
-      const user = await api.verifyCode(email, code)
+      // The browser's time zone: the daily like budget resets at local midnight.
+      const user = await api.verifyCode(email, code, Intl.DateTimeFormat().resolvedOptions().timeZone)
       queryClient.setQueryData(meQueryKey, user)
     })
   }

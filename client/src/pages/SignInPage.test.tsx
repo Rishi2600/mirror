@@ -43,7 +43,7 @@ describe('SignInPage', () => {
     fireEvent.change(screen.getByLabelText('Code'), { target: { value: '123456' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('role picker')).toBeTruthy()
-    expect(api.verifyCode).toHaveBeenCalledWith('ada@example.com', '123456')
+    expect(api.verifyCode).toHaveBeenCalledWith('ada@example.com', '123456', Intl.DateTimeFormat().resolvedOptions().timeZone)
   })
 
   it("shows the server's message when the code is wrong", async () => {

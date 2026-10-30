@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
+import { GhostingNote } from '../components/GhostingNote'
 import { HiringCardList } from '../components/HiringCardList'
 import { MatchesLink } from '../components/MatchesLink'
 import { ServerStatus } from '../components/ServerStatus'
@@ -51,6 +52,7 @@ export function HomePage() {
       )}
       {user?.role === 'employer' && (
         <>
+          <GhostingNote />
           <MatchesLink />
           <HiringCardList />
         </>

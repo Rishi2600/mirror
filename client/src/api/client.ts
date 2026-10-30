@@ -12,6 +12,7 @@ import type {
   MessagesPage,
   Preferences,
   Profile,
+  Selectivity,
   SwipeResult,
   TimelineCandidate,
   TimelineJob,
@@ -65,8 +66,8 @@ export function createApiClient(baseUrl: string) {
       }),
 
     requestCode: (email: string) => request<void>('POST', '/v1/auth/otp/request', { email }),
-    verifyCode: (email: string, code: string) =>
-      request<User>('POST', '/v1/auth/otp/verify', { email, code }),
+    verifyCode: (email: string, code: string, time_zone: string) =>
+      request<User>('POST', '/v1/auth/otp/verify', { email, code, time_zone }),
     setRole: (role: 'candidate' | 'employer') => request<User>('POST', '/v1/me/role', { role }),
     logout: () => request<void>('POST', '/v1/auth/logout'),
 
@@ -115,8 +116,9 @@ export function createApiClient(baseUrl: string) {
     getTimeline: () => request<TimelineJob[]>('GET', '/v1/timeline'),
 
     // key makes a retried swipe return the first answer instead of a new swipe.
-    swipe: (swipe: { hiring_card_id: string; candidate_id?: string; direction: 'left' | 'right' }, key: string) =>
+    swipe: (swipe: { hiring_card_id: string; candidate_id?: string; direction: 'left' | 'right'; dwell_ms?: number }, key: string) =>
       request<SwipeResult>('POST', '/v1/swipes', swipe, { 'Idempotency-Key': key }),
+    getSelectivity: () => request<Selectivity>('GET', '/v1/selectivity'),
     listMatches: () => request<Match[]>('GET', '/v1/matches'),
     getMatch: (id: string) => request<Match>('GET', `/v1/matches/${id}`),
     unmatch: (id: string) => request<void>('DELETE', `/v1/matches/${id}`),

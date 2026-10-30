@@ -253,3 +253,18 @@ export interface LiveEvent {
   message_id?: string
   read_at?: string
 }
+
+// Matches selectivity.Likes in server/internal/selectivity/selectivity.go.
+export interface Likes {
+  daily_budget: number
+  left: number
+  resets_at: string
+  paused_until: string | null
+  low_score: boolean
+}
+
+// Matches SelectivityResponse in server/internal/httpserver/match_handlers.go.
+export interface Selectivity {
+  likes?: Likes
+  ghosting: boolean
+}

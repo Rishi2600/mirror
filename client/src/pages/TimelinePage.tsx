@@ -1,15 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, Navigate } from 'react-router'
 import { ApiError } from '../api/client'
 import type { TimelineJob } from '../api/types'
 import { ErrorMessage } from '../components/form'
 import { JobCard } from '../components/JobCard'
+import { LikesNote } from '../components/LikesNote'
 import { MatchBanner } from '../components/MatchBanner'
 import { MatchReasons } from '../components/MatchReasons'
 import { SwipeStack } from '../components/SwipeStack'
 import { api } from '../lib/api'
 import { sendSwipe } from '../lib/sendSwipe'
+import { selectivityKey, useLikes } from '../lib/useLikes'
 import { useMe } from '../lib/useMe'
 
 // TimelinePage: the hiring cards that fit the candidate, best first, as a
@@ -17,14 +19,28 @@ import { useMe } from '../lib/useMe'
 export function TimelinePage() {
   const me = useMe()
   const timeline = useQuery({ queryKey: ['timeline'], queryFn: api.getTimeline, retry: false })
+  const likes = useLikes()
+  const queryClient = useQueryClient()
   const [matchId, setMatchId] = useState('')
   const [sendError, setSendError] = useState('')
 
-  // Called once a swipe leaves the undo window.
-  function send(job: TimelineJob, direction: 'left' | 'right') {
-    sendSwipe({ hiring_card_id: job.card_id, direction })
-      .then((res) => res?.matched && setMatchId(res.match_id))
-      .catch(() => setSendError('A swipe could not be saved. Check your connection and reload the page.'))
+  // Called once a swipe leaves the undo window. A like refused by the budget
+  // or a pause (429) puts the card back.
+  async function send(job: TimelineJob, direction: 'left' | 'right', dwellMs: number) {
+    try {
+      const res = await sendSwipe({ hiring_card_id: job.card_id, direction, dwell_ms: dwellMs })
+      if (res?.matched) {
+        setMatchId(res.match_id)
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        return false
+      }
+      setSendError('A swipe could not be saved. Check your connection and reload the page.')
+    } finally {
+      queryClient.invalidateQueries({ queryKey: selectivityKey })
+    }
+    return true
   }
 
   if (me.data?.role !== 'candidate') {
@@ -41,6 +57,7 @@ export function TimelinePage() {
       </div>
 
       {matchId && <MatchBanner matchId={matchId} onClose={() => setMatchId('')} />}
+      {likes && <LikesNote likes={likes} />}
       {timeline.isPending && <p className="text-gray-600">Finding jobs that fit you...</p>}
       {timeline.isError && (
         <div className="flex flex-col gap-2">
@@ -61,6 +78,7 @@ export function TimelinePage() {
             </div>
           )}
           onSend={send}
+          canLike={!likes || (likes.left > 0 && !likes.paused_until)}
           emptyMessage="You have seen every job that fits your card. New jobs show up here as employers post them."
         />
       )}

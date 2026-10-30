@@ -1,6 +1,7 @@
 import { animate, motion, useMotionValue, useReducedMotion, useTransform, type PanInfo } from 'motion/react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { UNDO_MS, useSwipeQueue, type Direction } from '../lib/useSwipeQueue'
+import { useVisibleTime } from '../lib/useVisibleTime'
 
 // A swipe counts when the card is dragged this far, or flung this fast.
 const DISTANCE = 120
@@ -11,20 +12,30 @@ type Props<T> = {
   getKey: (item: T) => string
   render: (item: T) => ReactNode
   // Called when a swipe leaves the undo window (it is final from then on).
-  onSend: (item: T, direction: Direction) => void
+  // dwellMs is how long the card was on screen. Resolving to false means the
+  // swipe was refused, and the card comes back.
+  onSend: (item: T, direction: Direction, dwellMs: number) => void | Promise<boolean>
+  // False stops likes (skips still work).
+  canLike?: boolean
   emptyMessage: string
 }
 
 // SwipeStack shows one card at a time, with the next two waiting behind it.
 // Drag or fling the top card right to like it, left to skip it; the
 // buttons and the arrow keys do the same.
-export function SwipeStack<T>({ items, getKey, render, onSend, emptyMessage }: Props<T>) {
+export function SwipeStack<T>({ items, getKey, render, onSend, canLike = true, emptyMessage }: Props<T>) {
   const [swiped, setSwiped] = useState<Set<string>>(() => new Set())
   const [leaving, setLeaving] = useState<Direction | null>(null)
-  const queue = useSwipeQueue<T>((s) => onSend(s.item, s.direction))
+  const queue = useSwipeQueue<{ card: T; dwellMs: number }>(async (s) => {
+    const accepted = await onSend(s.item.card, s.direction, s.item.dwellMs)
+    if (accepted === false) {
+      bringBack(s.item.card)
+    }
+  })
 
   const remaining = items.filter((item) => !swiped.has(getKey(item)))
   const top = remaining[0]
+  const timeOnCard = useVisibleTime(top && getKey(top))
 
   function decide(direction: Direction) {
     if (!top) {
@@ -32,17 +43,21 @@ export function SwipeStack<T>({ items, getKey, render, onSend, emptyMessage }: P
     }
     setLeaving(null)
     setSwiped((prev) => new Set(prev).add(getKey(top)))
-    queue.swipe(top, direction)
+    queue.swipe({ card: top, dwellMs: timeOnCard() }, direction)
+  }
+
+  function bringBack(card: T) {
+    setSwiped((prev) => {
+      const next = new Set(prev)
+      next.delete(getKey(card))
+      return next
+    })
   }
 
   function undo() {
     const swipe = queue.undo()
     if (swipe) {
-      setSwiped((prev) => {
-        const next = new Set(prev)
-        next.delete(getKey(swipe.item))
-        return next
-      })
+      bringBack(swipe.item.card)
     }
   }
 
@@ -52,7 +67,7 @@ export function SwipeStack<T>({ items, getKey, render, onSend, emptyMessage }: P
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return
       }
-      if (e.key === 'ArrowRight') setLeaving('right')
+      if (e.key === 'ArrowRight' && canLike) setLeaving('right')
       if (e.key === 'ArrowLeft') setLeaving('left')
       if (e.key === 'Backspace') undo()
     }
@@ -83,7 +98,7 @@ export function SwipeStack<T>({ items, getKey, render, onSend, emptyMessage }: P
             </div>
           ))}
         {top && (
-          <SwipeCard key={getKey(top)} leaving={leaving} onDecide={decide}>
+          <SwipeCard key={getKey(top)} leaving={leaving} canLike={canLike} onDecide={decide}>
             {render(top)}
           </SwipeCard>
         )}
@@ -113,7 +128,7 @@ export function SwipeStack<T>({ items, getKey, render, onSend, emptyMessage }: P
         <button
           type="button"
           onClick={() => setLeaving('right')}
-          disabled={!top}
+          disabled={!top || !canLike}
           aria-label="Like"
           className="flex h-14 w-14 items-center justify-center rounded-full bg-green-600 text-white disabled:opacity-40"
         >
@@ -135,12 +150,13 @@ type CardProps = {
   children: ReactNode
   // Set by the buttons and keys: the card flies out that way.
   leaving: Direction | null
+  canLike: boolean
   onDecide: (direction: Direction) => void
 }
 
 // SwipeCard is the draggable top card. It tilts and shows LIKE or SKIP as
 // it moves, flies out past the edge on a swipe, or springs back.
-function SwipeCard({ children, leaving, onDecide }: CardProps) {
+function SwipeCard({ children, leaving, canLike, onDecide }: CardProps) {
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-300, 300], [-12, 12])
   const likeOpacity = useTransform(x, [30, DISTANCE], [0, 1])
@@ -167,7 +183,7 @@ function SwipeCard({ children, leaving, onDecide }: CardProps) {
   }, [leaving, flyOut])
 
   function onDragEnd(_: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) {
-    if (info.offset.x > DISTANCE || info.velocity.x > SPEED) {
+    if (canLike && (info.offset.x > DISTANCE || info.velocity.x > SPEED)) {
       flyOut('right')
     } else if (info.offset.x < -DISTANCE || info.velocity.x < -SPEED) {
       flyOut('left')

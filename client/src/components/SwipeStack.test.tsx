@@ -6,13 +6,14 @@ afterEach(cleanup)
 
 const cards = ['Backend engineer', 'Product designer', 'Data analyst']
 
-function renderStack(onSend = vi.fn()) {
+function renderStack(onSend = vi.fn(), canLike = true) {
   render(
     <SwipeStack
       items={cards}
       getKey={(c) => c}
       render={(c) => <h2>{c}</h2>}
       onSend={onSend}
+      canLike={canLike}
       emptyMessage="All caught up"
     />,
   )
@@ -45,7 +46,7 @@ describe('SwipeStack', () => {
     await waitFor(() => expect(topCard()).toContain('Data analyst'))
 
     expect(onSend).toHaveBeenCalledTimes(1)
-    expect(onSend).toHaveBeenCalledWith('Backend engineer', 'left')
+    expect(onSend).toHaveBeenCalledWith('Backend engineer', 'left', expect.any(Number))
   })
 
   it('shows the empty message after the last card', async () => {
@@ -57,5 +58,26 @@ describe('SwipeStack', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
     expect(await screen.findByText('All caught up')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Like' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('puts a refused like back on top', async () => {
+    const onSend = renderStack(vi.fn().mockResolvedValue(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Like' }))
+    await waitFor(() => expect(topCard()).toContain('Product designer'))
+
+    // The next swipe sends the like, which the server refuses.
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('Backend engineer', 'right', expect.any(Number)))
+    await waitFor(() => expect(topCard()).toContain('Backend engineer'))
+  })
+
+  it('stops likes but not skips when likes are not allowed', async () => {
+    renderStack(vi.fn(), false)
+    expect((screen.getByRole('button', { name: 'Like' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(topCard()).toContain('Backend engineer')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    await waitFor(() => expect(topCard()).toContain('Product designer'))
   })
 })

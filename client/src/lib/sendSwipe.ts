@@ -2,7 +2,7 @@ import { ApiError } from '../api/client'
 import type { SwipeResult } from '../api/types'
 import { api } from './api'
 
-type SwipeBody = { hiring_card_id: string; candidate_id?: string; direction: 'left' | 'right' }
+type SwipeBody = { hiring_card_id: string; candidate_id?: string; direction: 'left' | 'right'; dwell_ms?: number }
 
 // sendSwipe sends one swipe. A network failure is retried with the same
 // key, so the server never counts it twice. A 409 (already swiped) means an
