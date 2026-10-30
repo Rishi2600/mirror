@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the binary carries the time zones for the like budget
 
 	"mirror/server/internal/ai"
 	"mirror/server/internal/config"

@@ -49,3 +49,23 @@ func (Notification) TableName() string { return "events.notifications" }
 func LogNotification(ctx context.Context, db *gorm.DB, n Notification) error {
 	return db.WithContext(ctx).Create(&n).Error
 }
+
+// SelectivitySnapshot is a candidate's score and its inputs at one moment.
+type SelectivitySnapshot struct {
+	ID            int64 // set by the database
+	UserID        string
+	Score         float64
+	RightRate     float64
+	MeanFit       float64
+	MedianDwellMS float64 `gorm:"column:median_dwell_ms"`
+	ReplyRate     float64
+	Swipes7d      int `gorm:"column:swipes_7d"`
+	CreatedAt     time.Time
+}
+
+func (SelectivitySnapshot) TableName() string { return "events.selectivity_snapshots" }
+
+// LogSelectivity records a score change.
+func LogSelectivity(ctx context.Context, db *gorm.DB, s SelectivitySnapshot) error {
+	return db.WithContext(ctx).Create(&s).Error
+}

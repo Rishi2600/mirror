@@ -2,8 +2,10 @@ package httpserver
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"mirror/server/internal/chat"
@@ -11,6 +13,7 @@ import (
 	"mirror/server/internal/hiring"
 	"mirror/server/internal/live"
 	"mirror/server/internal/profiles"
+	"mirror/server/internal/selectivity"
 	"mirror/server/internal/signing"
 	"mirror/server/internal/swipes"
 	"mirror/server/internal/users"
@@ -63,6 +66,7 @@ func (s *server) createSwipe(w http.ResponseWriter, r *http.Request) {
 		HiringCardID string `json:"hiring_card_id"`
 		CandidateID  string `json:"candidate_id"`
 		Direction    string `json:"direction"`
+		DwellMS      int    `json:"dwell_ms"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -71,8 +75,14 @@ func (s *server) createSwipe(w http.ResponseWriter, r *http.Request) {
 		body.CandidateID = user.ID
 	}
 
-	res, err := swipes.Record(r.Context(), s.db, user, body.HiringCardID, body.CandidateID, body.Direction, r.Header.Get("Idempotency-Key"))
+	res, err := swipes.Record(r.Context(), s.db, user, body.HiringCardID, body.CandidateID, body.Direction, r.Header.Get("Idempotency-Key"), body.DwellMS)
+	var limited *selectivity.Limited
 	switch {
+	case errors.As(err, &limited):
+		// The spec: a refused like answers 429 with the time it ends.
+		retry := int(math.Ceil(time.Until(limited.Until).Seconds()))
+		w.Header().Set("Retry-After", strconv.Itoa(retry))
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": limited.Reason, "until": limited.Until})
 	case errors.Is(err, swipes.ErrDirection), errors.Is(err, swipes.ErrKey):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, swipes.ErrKeyReused):
@@ -91,6 +101,39 @@ func (s *server) createSwipe(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// SelectivityResponse is what the browser needs for nudges. Candidates get
+// their likes; employers learn if they are ranking lower for not replying.
+// The raw score is never shown.
+type SelectivityResponse struct {
+	Likes    *selectivity.Likes `json:"likes,omitempty"`
+	Ghosting bool               `json:"ghosting"`
+}
+
+// GET /v1/selectivity
+func (s *server) getSelectivity(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var out SelectivityResponse
+	if user.Role == users.RoleEmployer {
+		ghosting, err := selectivity.Ghosting(r.Context(), s.db, []string{user.ID}, s.now())
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		out.Ghosting = ghosting[user.ID]
+	} else {
+		likes, err := selectivity.LikesFor(r.Context(), s.db, user, s.now())
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
+		out.Likes = &likes
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // GET /v1/matches: the user's live matches, the latest activity first.

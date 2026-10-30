@@ -48,7 +48,7 @@ func newPair(t *testing.T, db *gorm.DB, tag string) pair {
 
 func (p pair) swipe(t *testing.T, actor users.User, direction, key string) (Result, error) {
 	t.Helper()
-	return Record(p.ctx, p.db, actor, p.card.ID, p.candidate.ID, direction, key)
+	return Record(p.ctx, p.db, actor, p.card.ID, p.candidate.ID, direction, key, 5000)
 }
 
 func TestTwoRightSwipesMakeOneMatch(t *testing.T) {
@@ -123,7 +123,7 @@ func TestWhoMaySwipe(t *testing.T) {
 		if tt.want == ErrKey {
 			key = ""
 		}
-		if _, err := Record(p.ctx, db, tt.actor, tt.cardID, tt.candidateID, direction, key); !errors.Is(err, tt.want) {
+		if _, err := Record(p.ctx, db, tt.actor, tt.cardID, tt.candidateID, direction, key, 5000); !errors.Is(err, tt.want) {
 			t.Errorf("%s: error = %v, want %v", tt.name, err, tt.want)
 		}
 	}
@@ -173,17 +173,20 @@ func TestMatchesAndUnmatch(t *testing.T) {
 	}
 }
 
+// removeUsers deletes test users and their rows. Audit rows and event rows
+// outlive their users on purpose, so they go first.
+func removeUsers(db *gorm.DB, emails string) {
+	db.Exec("DELETE FROM audit_events WHERE actor_user_id IN (SELECT id FROM users WHERE email LIKE ?)", emails)
+	db.Exec("DELETE FROM events.selectivity_snapshots WHERE user_id IN (SELECT id FROM users WHERE email LIKE ?)", emails)
+	db.Exec("DELETE FROM users WHERE email LIKE ?", emails)
+}
+
 // Both sides like the pair at the same moment, many times over: exactly one
 // match each time. Uses real transactions, so it removes its own rows.
 func TestSimultaneousLikesMakeExactlyOneMatch(t *testing.T) {
 	db := dbtest.Conn(t)
 	// Remove this test's rows before (in case an earlier run crashed) and after.
-	// Audit rows outlive their users on purpose, so they go first.
-	cleanup := func() {
-		db.Exec(`DELETE FROM audit_events WHERE actor_user_id IN
-			(SELECT id FROM users WHERE email LIKE 'swipes._.race.%@example.com')`)
-		db.Exec("DELETE FROM users WHERE email LIKE 'swipes._.race.%@example.com'")
-	}
+	cleanup := func() { removeUsers(db, "swipes._.race.%@example.com") }
 	cleanup()
 	t.Cleanup(cleanup)
 

@@ -12,7 +12,9 @@ import (
 	"gorm.io/gorm/clause"
 
 	"mirror/server/internal/hiring"
+	"mirror/server/internal/matching"
 	"mirror/server/internal/profiles"
+	"mirror/server/internal/selectivity"
 	"mirror/server/internal/users"
 )
 
@@ -26,6 +28,8 @@ const (
 	StateUnmatched = "unmatched"
 
 	maxKeyLength = 100
+	// A card left open for longer tells us nothing more.
+	maxDwellMS = 10 * 60 * 1000
 )
 
 var (
@@ -45,7 +49,10 @@ type Swipe struct {
 	CandidateUserID string
 	Direction       string
 	IdempotencyKey  string
-	CreatedAt       time.Time
+	// DwellMS and Fit are set on candidate swipes only.
+	DwellMS   *int `gorm:"column:dwell_ms"`
+	Fit       *float64
+	CreatedAt time.Time
 }
 
 type Match struct {
@@ -97,8 +104,10 @@ type Result struct {
 // Record saves one swipe by actor on the pair (hiring card, candidate). A
 // candidate swipes on a live hiring card for themselves; an employer swipes
 // on a finished candidate card for one of their own live hiring cards.
-// Sending the same key again returns the first result.
-func Record(ctx context.Context, db *gorm.DB, actor users.User, cardID, candidateID, direction, key string) (Result, error) {
+// Sending the same key again returns the first result. dwellMS is the time
+// the card was on the candidate's screen. A candidate's like can be refused
+// with *selectivity.Limited.
+func Record(ctx context.Context, db *gorm.DB, actor users.User, cardID, candidateID, direction, key string, dwellMS int) (Result, error) {
 	if direction != Left && direction != Right {
 		return Result{}, ErrDirection
 	}
@@ -126,18 +135,38 @@ func Record(ctx context.Context, db *gorm.DB, actor users.User, cardID, candidat
 			return err
 		}
 
-		card, err := swipeable(tx, actor, cardID, candidateID)
+		card, profile, err := swipeable(tx, actor, cardID, candidateID)
 		if err != nil {
 			return err
+		}
+		s := Swipe{Side: side, ActorUserID: actor.ID, HiringCardID: cardID, CandidateUserID: candidateID, Direction: direction, IdempotencyKey: key}
+
+		now := time.Now()
+		if side == SideCandidate {
+			// One candidate's swipes run one after the other, so two tabs
+			// cannot both take the last like. This lock always comes before
+			// the pair lock, so the two can never deadlock.
+			if err := lock(tx, "likes:"+actor.ID); err != nil {
+				return err
+			}
+			if direction == Right {
+				if err := selectivity.CheckLike(ctx, tx, actor, now); err != nil {
+					return err
+				}
+			}
+			dwell := min(max(dwellMS, 0), maxDwellMS)
+			s.DwellMS = &dwell
+			if s.Fit, err = matching.Fit(ctx, tx, profile, card); err != nil {
+				return err
+			}
 		}
 
 		// Lock this pair for the rest of the transaction, so two swipes on it
 		// run one after the other and the second always sees the first.
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", cardID+":"+candidateID).Error; err != nil {
+		if err := lock(tx, cardID+":"+candidateID); err != nil {
 			return err
 		}
 
-		s := Swipe{Side: side, ActorUserID: actor.ID, HiringCardID: cardID, CandidateUserID: candidateID, Direction: direction, IdempotencyKey: key}
 		created := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&s)
 		if created.Error != nil {
 			return created.Error
@@ -147,6 +176,11 @@ func Record(ctx context.Context, db *gorm.DB, actor users.User, cardID, candidat
 		}
 		res.Swipe = s
 
+		if side == SideCandidate {
+			if err := selectivity.AfterSwipe(ctx, tx, actor.ID, now); err != nil {
+				return err
+			}
+		}
 		if direction != Right {
 			return nil
 		}
@@ -171,29 +205,35 @@ func Record(ctx context.Context, db *gorm.DB, actor users.User, cardID, candidat
 	return res, err
 }
 
-// swipeable checks that actor may swipe on this pair, and returns the card.
-func swipeable(tx *gorm.DB, actor users.User, cardID, candidateID string) (hiring.Card, error) {
+// lock holds a named lock until the transaction ends.
+func lock(tx *gorm.DB, name string) error {
+	return tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", name).Error
+}
+
+// swipeable checks that actor may swipe on this pair, and returns the two
+// cards.
+func swipeable(tx *gorm.DB, actor users.User, cardID, candidateID string) (hiring.Card, profiles.Profile, error) {
 	var card hiring.Card
+	var p profiles.Profile
 	if err := tx.Where("id = ? AND status = ?", cardID, hiring.StatusLive).First(&card).Error; err != nil {
-		return hiring.Card{}, ErrNotAllowed
+		return card, p, ErrNotAllowed
 	}
 	switch actor.Role {
 	case users.RoleCandidate:
 		if candidateID != actor.ID {
-			return hiring.Card{}, ErrNotAllowed
+			return card, p, ErrNotAllowed
 		}
 	case users.RoleEmployer:
 		if card.EmployerUserID != actor.ID {
-			return hiring.Card{}, ErrNotAllowed
+			return card, p, ErrNotAllowed
 		}
 	default:
-		return hiring.Card{}, ErrNotAllowed
+		return card, p, ErrNotAllowed
 	}
-	var p profiles.Profile
 	if err := tx.Where("user_id = ? AND onboarded_at IS NOT NULL", candidateID).First(&p).Error; err != nil {
-		return hiring.Card{}, ErrNotAllowed
+		return card, p, ErrNotAllowed
 	}
-	return card, nil
+	return card, p, nil
 }
 
 func findMatch(tx *gorm.DB, cardID, candidateID string) *Match {

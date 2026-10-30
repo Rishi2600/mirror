@@ -51,8 +51,9 @@ func (s *server) requestCode(w http.ResponseWriter, r *http.Request) {
 // POST /v1/auth/otp/verify {email, code}
 func (s *server) verifyCode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Email string `json:"email"`
-		Code  string `json:"code"`
+		Email    string `json:"email"`
+		Code     string `json:"code"`
+		TimeZone string `json:"time_zone"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -68,6 +69,10 @@ func (s *server) verifyCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := users.SetTimeZone(r.Context(), s.db, user.ID, body.TimeZone); err != nil {
+		s.serverError(w, r, err)
+		return
+	}
 	token, err := auth.CreateSession(r.Context(), s.db, user.ID)
 	if err != nil {
 		s.serverError(w, r, err)

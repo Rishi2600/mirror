@@ -102,6 +102,7 @@ func New(opts Options) http.Handler {
 	mux.HandleFunc("GET /v1/jobs/{id}/image", s.jobImage)
 	mux.HandleFunc("GET /v1/candidates/{id}/photo", s.candidatePhoto)
 	mux.HandleFunc("POST /v1/swipes", s.createSwipe)
+	mux.HandleFunc("GET /v1/selectivity", s.getSelectivity)
 	mux.HandleFunc("GET /v1/matches", s.listMatches)
 	mux.HandleFunc("GET /v1/matches/{id}", s.getMatch)
 	mux.HandleFunc("DELETE /v1/matches/{id}", s.unmatch)

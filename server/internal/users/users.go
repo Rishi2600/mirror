@@ -25,6 +25,8 @@ type User struct {
 	Role Role `gorm:"default:null"`
 	// FirstName is shown on an employer's hiring cards.
 	FirstName string
+	// TimeZone is the browser's zone, saved at sign-in; empty means UTC.
+	TimeZone  string
 	CreatedAt time.Time
 }
 
@@ -92,6 +94,18 @@ func SetRole(ctx context.Context, db *gorm.DB, id string, role Role) error {
 func SetFirstName(ctx context.Context, db *gorm.DB, id, firstName string) error {
 	return db.WithContext(ctx).Model(&User{}).Where("id = ?", id).
 		Update("first_name", strings.TrimSpace(firstName)).Error
+}
+
+// SetTimeZone saves the browser's time zone. An unknown one is ignored, so
+// a bad value can never stop a sign-in.
+func SetTimeZone(ctx context.Context, db *gorm.DB, id, zone string) error {
+	if zone == "" || len(zone) > 64 {
+		return nil
+	}
+	if _, err := time.LoadLocation(zone); err != nil {
+		return nil
+	}
+	return db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("time_zone", zone).Error
 }
 
 // NormalizeEmail trims and lowercases an email, the form it is stored in.
